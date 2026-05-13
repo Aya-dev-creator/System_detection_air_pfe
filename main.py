@@ -3,105 +3,156 @@
 Système Principal de Surveillance et Prédiction de la Qualité de l'Air
 Projet PFE - Raspberry Pi 4 + IoT + Machine Learning
 
-Ce script orchestre tous les composants du système:
-- Lecture des capteurs (MQ-135, DHT11, GPS)
-- Stockage en base de données SQLite3
-- Prédictions ML
-- Alertes en temps réel
-- Alertes en temps réel
-- Serveur web pour visualisation
+Ce script est le point d'entrée principal du système. Il orchestre tous les composants:
+- Lecture des capteurs (MQ-135 pour la qualité de l'air, DHT11 pour température/humidité, GPS NEO-6M)
+- Stockage des données en base de données SQLite3
+- Prédictions ML avec RandomForest pour anticiper la qualité de l'air
+- Alertes en temps réel via email et MQTT
+- Serveur web Flask pour visualisation des données (interface SSR sans JavaScript)
+
+Architecture:
+1. AirQualitySystem: Classe principale qui gère tous les composants
+2. Tâches planifiées: Lecture capteurs, prédictions ML, nettoyage alertes, résumé quotidien
+3. Thread séparé: Serveur web Flask tourne en parallèle
+4. Gestion propre de l'arrêt: Nettoyage des ressources sur Ctrl+C
 
 Auteur: Projet PFE 2024
 """
-import sys
-import time
-import signal
-import logging
-import schedule
-import threading
-from datetime import datetime
 
-# Imports des modules du projet
-from config import config
-from database import AirQualityDatabase
-from sensors2 import SensorManager
-from ml_model import AirQualityPredictor, generate_synthetic_training_data
-# from iot_cloud import IoTCloudManager
-from alert_system import AlertSystem
+# ============= IMPORTS STANDARD =============
+import sys  # Module système pour les arguments de ligne de commande et la sortie du programme
+import time  # Module pour les pauses et le temps (time.sleep)
+import signal  # Module pour gérer les signaux système (Ctrl+C)
+import logging  # Module pour la journalisation (logs) du système
+import schedule  # Bibliothèque pour planifier des tâches périodiques
+import threading  # Module pour exécuter le serveur web dans un thread séparé
+from datetime import datetime  # Module pour manipuler les dates et heures
 
-# Import du serveur web (optionnel)
+# ============= IMPORTS DES MODULES DU PROJET =============
+from config import config  # Configuration centrale (variables d'environnement, seuils, etc.)
+from database import AirQualityDatabase  # Gestion de la base de données SQLite3
+from sensors2 import SensorManager  # Gestion des capteurs (MQ-135, DHT11, GPS)
+from ml_model import AirQualityPredictor, generate_synthetic_training_data  # Modèle ML de prédiction
+# from iot_cloud import IoTCloudManager  # Gestion MQTT pour le cloud IoT (désactivé)
+from alert_system import AlertSystem  # Système d'alertes par email et MQTT
+
+# ============= IMPORT DU SERVEUR WEB (OPTIONNEL) =============
+# Le serveur web est optionnel car il nécessite des dépendances supplémentaires
+# Si l'import échoue, le système fonctionne quand même mais sans interface web
 try:
-    from web_server import app, initialize_server
-    WEB_SERVER_AVAILABLE = True
+    from web_server import app, initialize_server  # Application Flask et fonction d'initialisation
+    WEB_SERVER_AVAILABLE = True  # Flag indiquant que le serveur web est disponible
 except ImportError:
-    WEB_SERVER_AVAILABLE = False
+    WEB_SERVER_AVAILABLE = False  # Flag indiquant que le serveur web n'est pas disponible
     logger = logging.getLogger(__name__)
     logger.warning("⚠ Module web_server non disponible - Interface web désactivée")
 
-# Configuration du logging
+# ============= CONFIGURATION DU LOGGING =============
+# Le logging permet de suivre ce que fait le système et de détecter les erreurs
+# Les logs sont écrits dans un fichier et affichés dans la console
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO,  # Niveau de log: INFO (normal), DEBUG (détaillé), WARNING, ERROR
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Format des messages de log
     handlers=[
-        logging.FileHandler('air_quality_system.log'),
-        logging.StreamHandler(sys.stdout)
+        logging.FileHandler('air_quality_system.log'),  # Écriture dans un fichier
+        logging.StreamHandler(sys.stdout)  # Affichage dans la console
     ]
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)  # Création du logger pour ce module
 
 
 class AirQualitySystem:
     """
     Classe principale qui orchestre tout le système de surveillance
+    
+    Cette classe est le cœur du système. Elle initialise et coordonne tous les composants:
+    - Base de données pour le stockage
+    - Capteurs pour la collecte de données
+    - Modèle ML pour les prédictions
+    - Système d'alertes pour les notifications
+    - Serveur web pour l'interface utilisateur
+    
+    Méthodes principales:
+    - __init__: Initialisation de tous les composants
+    - read_and_process_sensors: Lecture et traitement des données capteurs
+    - make_predictions: Génération des prédictions ML
+    - schedule_tasks: Configuration des tâches planifiées
+    - start_web_server: Démarrage du serveur web
+    - run: Boucle principale du système
+    - stop: Arrêt propre du système
     """
     
     def __init__(self):
-        """Initialise tous les composants du système"""
+        """
+        Initialise tous les composants du système
+        
+        Cette méthode est appelée au démarrage du système. Elle:
+        1. Initialise la base de données SQLite3
+        2. Configure les capteurs (MQ-135, DHT11, GPS)
+        3. Charge ou entraîne le modèle ML
+        4. Initialise le système d'alertes
+        5. Prépare le serveur web
+        
+        Si une erreur survient lors de l'initialisation, le programme s'arrête.
+        """
         logger.info("="*60)
         logger.info("🚀 DÉMARRAGE DU SYSTÈME DE SURVEILLANCE DE QUALITÉ DE L'AIR")
         logger.info("="*60)
         
-        # Variables de contrôle
-        self.running = False
-        self.web_server_thread = None
+        # ============= VARIABLES DE CONTRÔLE =============
+        self.running = False  # Flag indiquant si le système est en cours d'exécution
+        self.web_server_thread = None  # Thread pour le serveur web (exécution parallèle)
         
-        # Initialiser les composants
+        # ============= INITIALISATION DES COMPOSANTS =============
         try:
-            # Base de données SQLite3
+            # ---------- 1. BASE DE DONNÉES SQLITE3 ----------
+            # SQLite est une base de données légère stockée dans un fichier
+            # Idéale pour Raspberry Pi car elle ne nécessite pas de serveur séparé
             logger.info("📊 Initialisation de la base de données SQLite3...")
-            db_path = config.DB_CONFIG['db_path']
-            self.db = AirQualityDatabase(db_path=db_path)
-            if self.db.connect():
-                self.db.create_tables()
+            db_path = config.DB_CONFIG['db_path']  # Chemin du fichier DB (ex: ./data/air_quality.db)
+            self.db = AirQualityDatabase(db_path=db_path)  # Création de l'instance DB
+            if self.db.connect():  # Tentative de connexion à la base de données
+                self.db.create_tables()  # Création des tables si elles n'existent pas
                 logger.info(f"✓ Base de données prête: {db_path}")
             else:
                 logger.error("✗ Échec connexion base de données")
             
-            # Capteurs
+            # ---------- 2. CAPTEURS (MQ-135, DHT11, GPS) ----------
+            # Les capteurs sont connectés aux broches GPIO du Raspberry Pi
+            # MQ-135: Qualité de l'air (via ADC ADS1115)
+            # DHT11: Température et humidité
+            # GPS NEO-6M: Localisation
             logger.info("🔌 Initialisation des capteurs...")
             self.sensors = SensorManager(
-                mq135_pin=config.SENSOR_CONFIG['mq135_pin'],
-                dht11_pin=config.SENSOR_CONFIG['dht11_pin'],
-                gps_enabled=config.SENSOR_CONFIG['gps_enabled']
+                mq135_pin=config.SENSOR_CONFIG['mq135_pin'],  # Broche GPIO pour MQ-135
+                dht11_pin=config.SENSOR_CONFIG['dht11_pin'],  # Broche GPIO pour DHT11
+                gps_enabled=config.SENSOR_CONFIG['gps_enabled']  # Activation/désactivation GPS
             )
             logger.info("✓ Capteurs initialisés")
             
-            # Modèle ML
+            # ---------- 3. MODÈLE MACHINE LEARNING ----------
+            # Le modèle ML utilise RandomForest pour prédire la qualité de l'air
+            # Il est entraîné sur des données historiques et sauvegardé dans un fichier .pkl
             logger.info("🤖 Initialisation du modèle ML...")
-            self.predictor = AirQualityPredictor()
+            self.predictor = AirQualityPredictor()  # Création de l'instance du prédicteur
             
-            # Charger ou entraîner le modèle
-            if not self.predictor.load_model():
+            # Charger le modèle existant ou en entraîner un nouveau
+            if not self.predictor.load_model():  # Tentative de chargement du modèle sauvegardé
                 logger.warning("⚠ Modèle non trouvé - Entraînement avec données synthétiques...")
+                # Si aucun modèle n'existe, générer des données synthétiques et entraîner
                 training_data = generate_synthetic_training_data(num_samples=2000)
                 self.predictor.train_model(training_data)
             
             logger.info("✓ Modèle ML prêt")
             
-            # Cloud IoT désactivé (Hébergement Cloudflare)
+            # ---------- 4. CLOUD IOT (DÉSACTIVÉ) ----------
+            # Le cloud IoT (MQTT) est désactivé car l'application est hébergée sur Cloudflare
+            # self.iot = IoTCloudManager(...)  # Non utilisé dans cette version
             self.iot = None
             
-            # Système d'alertes
+            # ---------- 5. SYSTÈME D'ALERTES ----------
+            # Le système d'alertes envoie des notifications par email et MQTT
+            # quand la qualité de l'air dépasse les seuils configurés
             logger.info("⚠️ Initialisation système d'alertes...")
             self.alert_system = AlertSystem(db_manager=self.db, iot_manager=self.iot)
             logger.info("✓ Système d'alertes prêt")
@@ -112,41 +163,57 @@ class AirQualitySystem:
             
         except Exception as e:
             logger.error(f"✗ Erreur lors de l'initialisation: {e}")
-            raise
+            raise  # Propager l'erreur pour arrêter le programme
     
     def read_and_process_sensors(self):
         """
         Lit tous les capteurs et traite les données
-        Cette fonction est appelée périodiquement
+        
+        Cette méthode est appelée périodiquement (toutes les X secondes configurées dans .env).
+        Elle effectue les opérations suivantes:
+        1. Lecture des capteurs (MQ-135, DHT11, GPS)
+        2. Extraction des données mesurées
+        3. Enregistrement dans la base de données
+        4. Vérification des seuils d'alerte
+        5. Déclenchement des alertes si nécessaire
+        
+        Cette méthode est planifiée par schedule.every().seconds.do()
         """
         try:
             logger.info("\n" + "="*60)
             logger.info("📊 CYCLE DE LECTURE DES CAPTEURS")
             logger.info("="*60)
             
-            # Lire tous les capteurs
+            # ============= 1. LECTURE DES CAPTEURS =============
+            # Le SensorManager lit tous les capteurs connectés
+            # Retourne un dictionnaire avec les données de chaque capteur
             sensor_data = self.sensors.read_all_sensors()
             
             if not sensor_data:
                 logger.error("✗ Échec lecture capteurs")
-                return
+                return  # Arrêter si la lecture a échoué
             
-            # Extraire les données
-            air_quality = sensor_data['air_quality']['ppm']
-            temperature = sensor_data['temperature']
-            humidity = sensor_data['humidity']
-            location = sensor_data.get('location')
+            # ============= 2. EXTRACTION DES DONNÉES =============
+            # Extraire les valeurs individuelles du dictionnaire
+            air_quality = sensor_data['air_quality']['ppm']  # Qualité de l'air en PPM
+            temperature = sensor_data['temperature']  # Température en °C
+            humidity = sensor_data['humidity']  # Humidité en %
+            location = sensor_data.get('location')  # Coordonnées GPS (optionnel)
             
+            # Extraire latitude et longitude si disponibles
             latitude = location['latitude'] if location else None
             longitude = location['longitude'] if location else None
             
+            # Afficher les données lues dans les logs
             logger.info(f"📊 Qualité air: {air_quality:.2f} PPM")
             logger.info(f"🌡️ Température: {temperature}°C")
             logger.info(f"💧 Humidité: {humidity}%")
             if latitude and longitude:
                 logger.info(f"📍 Position: {latitude:.6f}, {longitude:.6f}")
             
-            # Enregistrer dans la base de données
+            # ============= 3. ENREGISTREMENT EN BASE DE DONNÉES =============
+            # Insérer les données dans la table sensor_data
+            # La base de données stocke toutes les lectures pour l'historique
             record_id = self.db.insert_sensor_data(
                 air_quality=air_quality,
                 temperature=temperature,
@@ -158,13 +225,19 @@ class AirQualitySystem:
             if record_id:
                 logger.info(f"✓ Données enregistrées (ID: {record_id})")
             
-            # Publication cloud désactivée
+            # ============= 4. PUBLICATION CLOUD (DÉSACTIVÉ) =============
+            # La publication MQTT vers le cloud est désactivée
+            # self.iot.publish_sensor_data(...)  # Non utilisé
             
-            # Diffuser aux clients web désactivé (No-JS)
+            # ============= 5. DIFFUSION WEB (DÉSACTIVÉ) =============
+            # La diffusion en temps réel aux clients web est désactivée
+            # L'interface web utilise le rendu serveur (SSR) sans JavaScript
             if WEB_SERVER_AVAILABLE:
                 logger.debug("✓ Données prêtes pour interface web (SSR)")
             
-            # Vérifier les seuils et déclencher des alertes
+            # ============= 6. VÉRIFICATION DES SEUILS D'ALERTE =============
+            # Vérifier si la qualité de l'air dépasse les seuils configurés
+            # Si oui, déclencher des alertes par email et MQTT
             alerts = self.alert_system.check_air_quality(
                 air_quality_value=air_quality,
                 location={'latitude': latitude, 'longitude': longitude}
@@ -184,52 +257,73 @@ class AirQualitySystem:
     def make_predictions(self):
         """
         Fait des prédictions ML et détecte les pics futurs
-        Cette fonction est appelée périodiquement (moins fréquemment)
+        
+        Cette méthode est appelée périodiquement (toutes les heures).
+        Elle effectue les opérations suivantes:
+        1. Récupération des dernières données de capteurs
+        2. Génération de prédictions pour les 24 prochaines heures
+        3. Détection des pics de pollution prévus
+        4. Enregistrement des prédictions dans la base de données
+        5. Déclenchement d'alertes si des pics sont détectés
+        
+        Cette méthode est planifiée par schedule.every().hour.do()
         """
         try:
             logger.info("\n" + "="*60)
             logger.info("🔮 GÉNÉRATION DES PRÉDICTIONS ML")
             logger.info("="*60)
             
-            # Récupérer les dernières données
+            # ============= 1. RÉCUPÉRATION DES DERNIÈRES DONNÉES =============
+            # Récupérer la lecture la plus récente des capteurs
+            # Ces données servent de point de départ pour les prédictions
             latest_readings = self.db.get_latest_readings(limit=1)
             
             if not latest_readings:
                 logger.warning("⚠ Pas de données pour faire des prédictions")
-                return
+                return  # Arrêter si aucune donnée n'est disponible
             
+            # Extraire les données actuelles pour les prédictions
             current_data = {
                 'air_quality_ppm': latest_readings[0]['air_quality_ppm'],
                 'temperature': latest_readings[0]['temperature'],
                 'humidity': latest_readings[0]['humidity']
             }
             
-            # Faire des prédictions pour les 24 prochaines heures
+            # ============= 2. GÉNÉRATION DES PRÉDICTIONS =============
+            # Utiliser le modèle ML pour prédire la qualité de l'air
+            # pour les 24 prochaines heures (une prédiction par heure)
             predictions = self.predictor.predict(current_data, hours_ahead=24)
             
-            # Détecter les pics de pollution
+            # ============= 3. DÉTECTION DES PICS DE POLLUTION =============
+            # Analyser les prédictions pour détecter les pics de pollution
+            # Un pic est défini comme une valeur dépassant un seuil critique
             peaks = self.predictor.detect_pollution_peak(predictions)
             
             if peaks:
                 logger.warning(f"⚠️ {len(peaks)} pic(s) de pollution prévu(s)")
                 # Créer des alertes pour les pics prévus
                 alerts = self.alert_system.check_predictions(predictions)
-                pass
+                pass  # Les alertes sont gérées par le système d'alertes
             else:
                 logger.info("✓ Aucun pic de pollution prévu")
             
-            # Enregistrer quelques prédictions clés dans la DB
-            for i in [0, 6, 12, 18, 23]:  # Prédictions toutes les 6h
+            # ============= 4. ENREGISTREMENT DES PRÉDICTIONS =============
+            # Enregistrer quelques prédictions clés dans la base de données
+            # On enregistre les prédictions toutes les 6h (0h, 6h, 12h, 18h, 23h)
+            # pour éviter de surcharger la base de données
+            for i in [0, 6, 12, 18, 23]:  # Indices des prédictions à enregistrer
                 if i < len(predictions):
                     pred = predictions[i]
                     self.db.insert_prediction(
                         predicted_for=datetime.fromisoformat(pred['timestamp']),
                         predicted_aqi=pred['predicted_aqi'],
                         confidence=pred['confidence'],
-                        model_version='RF_v1.0'
+                        model_version='RF_v1.0'  # Version du modèle (Random Forest v1.0)
                     )
             
-            # Publication cloud désactivée
+            # ============= 5. PUBLICATION CLOUD (DÉSACTIVÉ) =============
+            # La publication MQTT vers le cloud est désactivée
+            # self.iot.publish_predictions(...)  # Non utilisé
             
             logger.info("="*60)
             logger.info("✓ PRÉDICTIONS TERMINÉES\n")
@@ -238,12 +332,29 @@ class AirQualitySystem:
             logger.error(f"✗ Erreur génération prédictions: {e}")
     
     def send_daily_summary(self):
-        """Envoie un résumé quotidien par email"""
+        """
+        Envoie un résumé quotidien par email
+        
+        Cette méthode est appelée tous les jours à 8h du matin.
+        Elle génère un résumé des statistiques des dernières 24 heures
+        et l'envoie par email à l'adresse configurée.
+        
+        Le résumé inclut:
+        - Qualité de l'air moyenne
+        - Température moyenne
+        - Humidité moyenne
+        - Nombre d'alertes déclenchées
+        
+        Cette méthode est planifiée par schedule.every().day.at("08:00").do()
+        """
         try:
             logger.info("📧 Génération du résumé quotidien...")
+            
+            # Récupérer les statistiques des dernières 24 heures
             statistics = self.db.get_statistics(hours=24)
             
             if statistics:
+                # Envoyer le résumé par email via le système d'alertes
                 self.alert_system.send_daily_summary(statistics)
                 logger.info("✓ Résumé quotidien envoyé")
             else:
@@ -253,54 +364,99 @@ class AirQualitySystem:
             logger.error(f"✗ Erreur envoi résumé: {e}")
     
     def schedule_tasks(self):
-        """Configure les tâches planifiées"""
+        """
+        Configure les tâches planifiées
+        
+        Cette méthode configure toutes les tâches périodiques du système
+        en utilisant la bibliothèque 'schedule'. Chaque tâche est exécutée
+        automatiquement à intervalles réguliers.
+        
+        Tâches configurées:
+        1. Lecture des capteurs: toutes les X secondes (configuré dans .env)
+        2. Prédictions ML: toutes les heures
+        3. Nettoyage des alertes: toutes les 6 heures
+        4. Résumé quotidien: tous les jours à 8h00
+        
+        La boucle principale (run()) exécute ces tâches via schedule.run_pending()
+        """
         logger.info("⏰ Configuration des tâches planifiées...")
         
+        # ============= 1. LECTURE DES CAPTEURS =============
         # Lecture des capteurs toutes les X secondes (configuré dans .env)
+        # Par défaut: toutes les 60 secondes (1 minute)
         interval = config.SENSOR_CONFIG['read_interval']
         schedule.every(interval).seconds.do(self.read_and_process_sensors)
         logger.info(f"  ✓ Lecture capteurs: toutes les {interval}s")
         
-        # Prédictions ML toutes les heures
+        # ============= 2. PRÉDICTIONS ML =============
+        # Génération des prédictions ML toutes les heures
+        # Le modèle prédit la qualité de l'air pour les 24 prochaines heures
         schedule.every().hour.do(self.make_predictions)
         logger.info("  ✓ Prédictions ML: toutes les heures")
         
+        # ============= 3. NETTOYAGE DES ALERTES =============
         # Nettoyage des anciennes alertes toutes les 6 heures
+        # Supprime les alertes résolues pour éviter d'encombrer la base de données
         schedule.every(6).hours.do(lambda: self.alert_system.clear_old_alerts())
         logger.info("  ✓ Nettoyage alertes: toutes les 6h")
         
-        # Résumé quotidien à 8h du matin
+        # ============= 4. RÉSUMÉ QUOTIDIEN =============
+        # Envoi d'un résumé quotidien par email tous les jours à 8h00
+        # Le résumé contient les statistiques des dernières 24 heures
         schedule.every().day.at("08:00").do(self.send_daily_summary)
         logger.info("  ✓ Résumé quotidien: 8h00")
     
     def start_web_server(self):
-        """Démarre le serveur web Flask dans un thread séparé"""
+        """
+        Démarre le serveur web Flask dans un thread séparé
+        
+        Cette méthode lance le serveur web Flask dans un thread séparé (daemon)
+        pour qu'il tourne en parallèle avec les autres tâches du système.
+        
+        Le serveur web fournit:
+        - Interface web pour visualiser les données (dashboard, carte, prédictions)
+        - API REST pour accéder aux données
+        - Assistant IA pour répondre aux questions
+        
+        Le thread est daemon=True pour qu'il s'arrête automatiquement
+        quand le programme principal s'arrête.
+        """
         if not WEB_SERVER_AVAILABLE:
             logger.warning("⚠ Module web_server non disponible - Serveur web non démarré")
-            return
+            return  # Arrêter si le module web_server n'est pas disponible
         
         try:
             logger.info("🌐 Démarrage du serveur web...")
             
+            # ============= 1. INITIALISATION DU SERVEUR WEB =============
             # Initialiser le serveur web avec la base de données existante
+            # Cela crée les connexions DB nécessaires pour le serveur web
             initialize_server()
             
+            # ============= 2. FONCTION DE LANCEMENT DU SERVEUR =============
+            # Cette fonction sera exécutée dans le thread séparé
             def run_server():
-                host = config.FLASK_CONFIG['host']
-                port = config.FLASK_CONFIG['port']
+                host = config.FLASK_CONFIG['host']  # Adresse IP (ex: 0.0.0.0 pour toutes les interfaces)
+                port = config.FLASK_CONFIG['port']  # Port TCP (ex: 5000)
                 logger.info(f"✓ Serveur web démarré sur http://{host}:{port}")
                 logger.info(f"📱 Accessible depuis n'importe quel appareil sur le réseau")
                 logger.info(f"🌍 Interface web: http://{host}:{port}/")
+                
+                # Lancer l'application Flask
                 app.run(
                     host=host,
                     port=port,
-                    debug=False
+                    debug=False  # Mode debug désactivé en production
                 )
             
+            # ============= 3. CRÉATION DU THREAD =============
+            # Créer un thread daemon pour exécuter le serveur web
+            # Daemon=True: le thread s'arrête automatiquement quand le programme principal s'arrête
             self.web_server_thread = threading.Thread(target=run_server, daemon=True)
-            self.web_server_thread.start()
+            self.web_server_thread.start()  # Démarrer le thread
             
-            # Attendre que le serveur démarre
+            # ============= 4. ATTENTE DU DÉMARRAGE =============
+            # Attendre 2 secondes pour que le serveur ait le temps de démarrer
             time.sleep(2)
             logger.info("✓ Serveur web opérationnel")
             
@@ -308,24 +464,48 @@ class AirQualitySystem:
             logger.error(f"✗ Erreur démarrage serveur web: {e}")
     
     def run(self):
-        """Boucle principale du système"""
+        """
+        Boucle principale du système
+        
+        Cette méthode est le point d'entrée principal du système après l'initialisation.
+        Elle effectue les opérations suivantes:
+        1. Configure les tâches planifiées
+        2. Démarre le serveur web
+        3. Effectue une première lecture des capteurs
+        4. Effectue des prédictions initiales
+        5. Lance la boucle principale qui exécute les tâches planifiées
+        
+        La boucle principale tourne indéfiniment jusqu'à ce que:
+        - L'utilisateur appuie sur Ctrl+C (KeyboardInterrupt)
+        - Le flag self.running est mis à False
+        
+        Dans la boucle principale:
+        - schedule.run_pending() exécute les tâches planifiées si leur heure est venue
+        - time.sleep(1) attend 1 seconde avant de vérifier à nouveau
+        """
         logger.info("\n" + "="*60)
         logger.info("▶️ DÉMARRAGE DU SYSTÈME")
         logger.info("="*60)
         
-        self.running = True
+        self.running = True  # Activer le flag de fonctionnement
         
-        # Configurer les tâches planifiées
+        # ============= 1. CONFIGURATION DES TÂCHES PLANIFIÉES =============
+        # Configurer toutes les tâches périodiques (lecture capteurs, prédictions, etc.)
         self.schedule_tasks()
         
-        # Démarrer le serveur web
+        # ============= 2. DÉMARRAGE DU SERVEUR WEB =============
+        # Démarrer le serveur web dans un thread séparé
         self.start_web_server()
         
-        # Faire une première lecture immédiate
+        # ============= 3. PREMIÈRE LECTURE DES CAPTEURS =============
+        # Effectuer une lecture immédiate des capteurs au démarrage
+        # Cela permet d'avoir des données dès le début
         logger.info("📊 Lecture initiale des capteurs...")
         self.read_and_process_sensors()
         
-        # Faire des prédictions initiales
+        # ============= 4. PRÉDICTIONS INITIALES =============
+        # Effectuer des prédictions initiales au démarrage
+        # Cela permet d'avoir des prédictions dès le début
         logger.info("🔮 Prédictions initiales...")
         self.make_predictions()
         
@@ -334,36 +514,53 @@ class AirQualitySystem:
         logger.info("="*60)
         logger.info("Appuyez sur Ctrl+C pour arrêter le système\n")
         
-        # Boucle principale
+        # ============= 5. BOUCLE PRINCIPALE =============
+        # Boucle infinie qui exécute les tâches planifiées
         try:
-            while self.running:
-                schedule.run_pending()
-                time.sleep(1)
-        except KeyboardInterrupt:
+            while self.running:  # Tant que le système est en cours d'exécution
+                schedule.run_pending()  # Exécuter les tâches planifiées si leur heure est venue
+                time.sleep(1)  # Attendre 1 seconde avant de vérifier à nouveau
+        except KeyboardInterrupt:  # Si l'utilisateur appuie sur Ctrl+C
             logger.info("\n⚠️ Arrêt demandé par l'utilisateur")
-            self.stop()
+            self.stop()  # Arrêter proprement le système
     
     def stop(self):
-        """Arrête proprement le système"""
+        """
+        Arrête proprement le système
+        
+        Cette méthode est appelée quand l'utilisateur appuie sur Ctrl+C ou
+        quand le système doit s'arrêter. Elle effectue un nettoyage propre
+        de toutes les ressources pour éviter les fuites de mémoire et
+        les problèmes de fermeture.
+        
+        Opérations de nettoyage:
+        1. Désactiver le flag de fonctionnement
+        2. Nettoyer les capteurs (libérer les broches GPIO)
+        3. Déconnecter le cloud IoT (si activé)
+        4. Fermer la base de données
+        """
         logger.info("\n" + "="*60)
         logger.info("🛑 ARRÊT DU SYSTÈME")
         logger.info("="*60)
         
-        self.running = False
+        self.running = False  # Désactiver le flag de fonctionnement
         
-        # Nettoyer les ressources
+        # ============= NETTOYAGE DES RESSOURCES =============
         logger.info("🧹 Nettoyage des ressources...")
         
+        # Nettoyer les capteurs (libérer les broches GPIO)
         if self.sensors:
-            self.sensors.cleanup()
+            self.sensors.cleanup()  # Libérer les ressources GPIO
             logger.info("✓ Capteurs nettoyés")
         
+        # Déconnecter le cloud IoT (si activé)
         # if self.iot:
         #     self.iot.disconnect()
         #     logger.info("✓ Cloud déconnecté")
         
+        # Fermer la base de données
         if self.db:
-            self.db.close()
+            self.db.close()  # Fermer la connexion à la base de données
             logger.info("✓ Base de données fermée")
         
         logger.info("="*60)
@@ -372,24 +569,58 @@ class AirQualitySystem:
 
 
 # ============================================
-# Point d'entrée principal
+# Point d'entrée principal du programme
 # ============================================
 
 def signal_handler(sig, frame):
-    """Gère les signaux d'arrêt (Ctrl+C)"""
+    """
+    Gère les signaux d'arrêt (Ctrl+C)
+    
+    Cette fonction est appelée quand l'utilisateur appuie sur Ctrl+C
+    (signal SIGINT). Elle permet un arrêt propre du système.
+    
+    Args:
+        sig: Le signal reçu (ex: signal.SIGINT pour Ctrl+C)
+        frame: Le frame d'exécution actuel (non utilisé ici)
+    
+    Note:
+        Cette fonction est enregistrée via signal.signal() au début du programme.
+    """
     logger.info("\n⚠️ Signal d'arrêt reçu")
-    sys.exit(0)
+    sys.exit(0)  # Sortir du programme avec le code de succès (0)
 
 
 if __name__ == "__main__":
-    # Configurer le gestionnaire de signaux
+    """
+    Point d'entrée principal du programme
+    
+    Ce bloc est exécuté uniquement lorsque le script est lancé directement
+    (pas lorsqu'il est importé comme module). Il:
+    1. Configure le gestionnaire de signaux pour Ctrl+C
+    2. Crée une instance du système AirQualitySystem
+    3. Lance la boucle principale du système
+    4. Gère les erreurs fatales
+    
+    Pour lancer le système:
+        python3 main.py
+    """
+    # ============= 1. CONFIGURATION DU GESTIONNAIRE DE SIGNAUX =============
+    # Enregistrer la fonction signal_handler pour le signal SIGINT (Ctrl+C)
+    # Cela permet un arrêt propre quand l'utilisateur appuie sur Ctrl+C
     signal.signal(signal.SIGINT, signal_handler)
     
     try:
-        # Créer et démarrer le système
+        # ============= 2. CRÉATION ET DÉMARRAGE DU SYSTÈME =============
+        # Créer une instance de la classe AirQualitySystem
+        # Cela initialise tous les composants (DB, capteurs, ML, alertes, web)
         system = AirQualitySystem()
+        
+        # Lancer la boucle principale du système
+        # Cela démarre les tâches planifiées et le serveur web
         system.run()
         
     except Exception as e:
+        # ============= 3. GESTION DES ERREURS FATALES =============
+        # Si une erreur fatale survient, la logger et sortir avec le code d'erreur (1)
         logger.error(f"✗ Erreur fatale: {e}")
-        sys.exit(1)
+        sys.exit(1)  # Sortir avec le code d'erreur (1 = échec)

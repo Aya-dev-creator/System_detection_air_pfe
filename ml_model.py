@@ -1,118 +1,241 @@
 """
 Module de Machine Learning pour la prédiction de la qualité de l'air
-Utilise Random Forest et LSTM pour prédire les pics de pollution
+Utilise Random Forest pour prédire les pics de pollution
+
+Ce module implémente un système de prédiction de la qualité de l'air basé sur
+l'apprentissage automatique (Machine Learning). Il utilise l'algorithme Random Forest
+pour prédire la qualité de l'air future et détecter les pics de pollution.
+
+Fonctionnalités:
+- Entraînement de modèles ML sur des données historiques
+- Prédiction de la qualité de l'air pour les prochaines 24 heures
+- Détection des pics de pollution prévus
+- Génération de recommandations personnalisées
+- Génération de données synthétiques pour l'entraînement initial
+
+Architecture:
+- AirQualityPredictor: Classe principale pour les prédictions
+- RandomForestRegressor: Algorithme ML utilisé (robuste et performant)
+- StandardScaler: Normalisation des features
+- Feature Engineering: Création de features temporelles et de lag
+
+Optimisation pour Raspberry Pi:
+- Modèle léger (Random Forest avec 100 arbres)
+- Gestion d'erreurs robuste
+- Fallback quand le modèle n'est pas disponible
+- Prédictions synthétiques réalistes en cas d'échec
 """
-import numpy as np
-import pandas as pd
-from datetime import datetime, timedelta
-import logging
-import joblib
-import os
-# Machine Learning
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+
+import numpy as np  # Bibliothèque pour le calcul numérique
+import pandas as pd  # Bibliothèque pour la manipulation de données
+from datetime import datetime, timedelta  # Modules pour les dates et heures
+import logging  # Module pour la journalisation
+import joblib  # Module pour sauvegarder/charger les modèles ML
+import os  # Module pour les opérations système
+
+# ============= IMPORTS MACHINE LEARNING =============
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor  # Algorithmes de régression
+from sklearn.preprocessing import StandardScaler  # Normalisation des features
+from sklearn.model_selection import train_test_split  # Division train/test
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error  # Métriques d'évaluation
+
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 class AirQualityPredictor:
     """
     Classe pour créer et utiliser des modèles de prédiction de qualité de l'air
+    
+    Cette classe encapsule toutes les fonctionnalités liées au Machine Learning:
+    - Entraînement de modèles Random Forest
+    - Feature engineering (création de features temporelles, lag, rolling statistics)
+    - Prédiction de la qualité de l'air future
+    - Détection des pics de pollution
+    - Génération de recommandations personnalisées
+    - Sauvegarde et chargement des modèles
+    
+    Méthodes principales:
+    - create_features(): Crée les features pour le modèle ML
+    - train_model(): Entraîne le modèle sur des données historiques
+    - predict(): Fait des prédictions pour les prochaines heures
+    - detect_pollution_peak(): Détecte les pics de pollution prévus
+    - generate_recommendations(): Génère des recommandations personnalisées
+    - save_model(): Sauvegarde le modèle entraîné
+    - load_model(): Charge un modèle sauvegardé
     """
+    
     def __init__(self, model_path='./models/air_quality_model.pkl'):
         """
-        Initialise le prédicteur
-         Args:
+        Initialise le prédicteur de qualité de l'air
+        
+        Cette méthode configure le prédicteur avec:
+        - Le chemin de sauvegarde du modèle
+        - Le chemin de sauvegarde du scaler (normalisation)
+        - La liste des features utilisées par le modèle
+        - Le scaler pour normaliser les features
+        
+        Args:
             model_path (str): Chemin pour sauvegarder/charger le modèle
+                             Par défaut: './models/air_quality_model.pkl'
         """
-        self.model_path = model_path
-        self.scaler_path = model_path.replace('.pkl', '_scaler.pkl')
-        self.model = None
-        self.scaler = StandardScaler()
+        self.model_path = model_path  # Chemin du fichier du modèle
+        self.scaler_path = model_path.replace('.pkl', '_scaler.pkl')  # Chemin du scaler
+        self.model = None  # Instance du modèle ML (sera chargé ou entraîné)
+        self.scaler = StandardScaler()  # Scaler pour normaliser les features
+        
+        # Liste des features utilisées par le modèle
+        # Ces features sont créées par la méthode create_features()
         self.feature_names = [
-            'hour', 'day_of_week', 'month',
-            'temperature', 'humidity',
-            'air_quality_lag_1', 'air_quality_lag_2', 'air_quality_lag_3',
-            'air_quality_rolling_mean_3', 'air_quality_rolling_mean_6',
-            'air_quality_rolling_std_3'
+            'hour',  # Heure de la journée (0-23)
+            'day_of_week',  # Jour de la semaine (0-6, 0=lundi)
+            'month',  # Mois de l'année (1-12)
+            'temperature',  # Température en °C
+            'humidity',  # Humidité en %
+            'air_quality_lag_1',  # Qualité de l'air il y a 1 heure
+            'air_quality_lag_2',  # Qualité de l'air il y a 2 heures
+            'air_quality_lag_3',  # Qualité de l'air il y a 3 heures
+            'air_quality_rolling_mean_3',  # Moyenne mobile sur 3 heures
+            'air_quality_rolling_mean_6',  # Moyenne mobile sur 6 heures
+            'air_quality_rolling_std_3'  # Écart-type mobile sur 3 heures
         ]
-        # Créer le dossier models s'il n'existe pas
-        os.makedirs('./models', exist_ok=True)
-        os.makedirs('./data', exist_ok=True)
+        
+        # Créer les dossiers nécessaires s'ils n'existent pas
+        os.makedirs('./models', exist_ok=True)  # Dossier pour les modèles
+        os.makedirs('./data', exist_ok=True)  # Dossier pour les données
+        
         logger.info("✓ Prédicteur de qualité de l'air initialisé")
     def create_features(self, df):
         """
         Crée les features pour le modèle ML à partir des données brutes
+        
+        Cette méthode effectue du "feature engineering" pour créer des features
+        informatives à partir des données brutes des capteurs. Le feature engineering
+        est essentiel pour améliorer les performances du modèle ML.
+        
+        Features créées:
+        1. Features temporelles: hour, day_of_week, month
+           - Capturent les patterns saisonniers et horaires
+        2. Features de lag: air_quality_lag_1, lag_2, lag_3
+           - Capturent la dépendance temporelle (valeurs précédentes)
+        3. Features de rolling statistics: rolling_mean_3, rolling_mean_6, rolling_std_3
+           - Capturent les tendances et la volatilité
+        
         Args:
             df (DataFrame): DataFrame avec colonnes timestamp, air_quality_ppm, temperature, humidity
+        
         Returns:
             DataFrame: DataFrame avec features engineered
+                      Les lignes avec NaN sont supprimées (créées par lag/rolling)
         """
         logger.info("🔧 Création des features...")
-        df = df.copy()
+        df = df.copy()  # Copier le DataFrame pour éviter de modifier l'original
+        
+        # Convertir timestamp en datetime
         df['timestamp'] = pd.to_datetime(df['timestamp'])
+        
+        # Trier par timestamp (nécessaire pour les features de lag et rolling)
         df = df.sort_values('timestamp')
-        # Features temporelles
-        df['hour'] = df['timestamp'].dt.hour
-        df['day_of_week'] = df['timestamp'].dt.dayofweek
-        df['month'] = df['timestamp'].dt.month
-        # Features de lag (valeurs précédentes)
+        
+        # ============= FEATURES TEMPORELLES =============
+        # Ces features capturent les patterns saisonniers et horaires
+        df['hour'] = df['timestamp'].dt.hour  # Heure de la journée (0-23)
+        df['day_of_week'] = df['timestamp'].dt.dayofweek  # Jour de la semaine (0-6)
+        df['month'] = df['timestamp'].dt.month  # Mois de l'année (1-12)
+        
+        # ============= FEATURES DE LAG =============
+        # Ces features capturent la dépendance temporelle
+        # shift(1): valeur de l'heure précédente
+        # shift(2): valeur de 2 heures avant
+        # shift(3): valeur de 3 heures avant
         df['air_quality_lag_1'] = df['air_quality_ppm'].shift(1)
         df['air_quality_lag_2'] = df['air_quality_ppm'].shift(2)
         df['air_quality_lag_3'] = df['air_quality_ppm'].shift(3)
-        # Features de rolling statistics
+        
+        # ============= FEATURES DE ROLLING STATISTICS =============
+        # Ces features capturent les tendances et la volatilité
+        # rolling(window=3).mean(): moyenne des 3 dernières heures
+        # rolling(window=6).mean(): moyenne des 6 dernières heures
+        # rolling(window=3).std(): écart-type des 3 dernières heures
         df['air_quality_rolling_mean_3'] = df['air_quality_ppm'].rolling(window=3).mean()
         df['air_quality_rolling_mean_6'] = df['air_quality_ppm'].rolling(window=6).mean()
         df['air_quality_rolling_std_3'] = df['air_quality_ppm'].rolling(window=3).std()
+        
         # Supprimer les lignes avec des NaN créées par les opérations de lag/rolling
+        # Les premières lignes auront NaN car il n'y a pas assez de données historiques
         df = df.dropna()
+        
         logger.info(f"✓ {len(df)} échantillons avec features créés")
         return df
     def train_model(self, data, test_size=0.2):
         """
-        Entraîne le modèle de prédiction
+        Entraîne le modèle de prédiction Random Forest
+        
+        Cette méthode entraîne un modèle Random Forest pour prédire la qualité de l'air.
+        Le processus d'entraînement comprend:
+        1. Création des features (feature engineering)
+        2. Division des données en train/test
+        3. Normalisation des features (StandardScaler)
+        4. Entraînement du modèle Random Forest
+        5. Évaluation des performances (RMSE, MAE, R²)
+        6. Sauvegarde du modèle entraîné
+        
         Args:
             data (DataFrame): Données d'entraînement avec colonnes requises
-            test_size (float): Proportion des données pour le test
+                             (timestamp, air_quality_ppm, temperature, humidity)
+            test_size (float): Proportion des données pour le test (défaut: 0.2 = 20%)
+        
         Returns:
-            dict: Métriques de performance du modèle
+            dict: Métriques de performance du modèle:
+                  - train: Métriques sur les données d'entraînement (RMSE, MAE, R²)
+                  - test: Métriques sur les données de test (RMSE, MAE, R²)
         """
         logger.info("🎓 Début de l'entraînement du modèle...")
-        # Créer les features
-        df = self.create_features(data)
-        # Préparer X et y
-        X = df[self.feature_names]
-        y = df['air_quality_ppm']
-        # Split train/test
+        
+        # ============= 1. CRÉATION DES FEATURES =============
+        df = self.create_features(data)  # Créer les features ML
+        
+        # ============= 2. PRÉPARATION DES DONNÉES =============
+        X = df[self.feature_names]  # Features (variables indépendantes)
+        y = df['air_quality_ppm']  # Target (variable dépendante)
+        
+        # ============= 3. DIVISION TRAIN/TEST =============
+        # Diviser les données en ensemble d'entraînement et de test
+        # shuffle=False: important pour les données temporelles (ne pas mélanger)
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=test_size, random_state=42, shuffle=False
         )
+        
         logger.info(f"📊 Données d'entraînement: {len(X_train)} échantillons")
         logger.info(f"📊 Données de test: {len(X_test)} échantillons")
-        # Normaliser les features
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_test_scaled = self.scaler.transform(X_test)
-        # Entraîner le modèle Random Forest
+        
+        # ============= 4. NORMALISATION DES FEATURES =============
+        # Normaliser les features pour avoir une moyenne de 0 et un écart-type de 1
+        # Cela améliore la convergence et les performances du modèle
+        X_train_scaled = self.scaler.fit_transform(X_train)  # Fit sur train, transform train
+        X_test_scaled = self.scaler.transform(X_test)  # Transform test avec le scaler du train
+        
+        # ============= 5. ENTRAÎNEMENT DU MODÈLE RANDOM FOREST =============
         logger.info("🌳 Entraînement Random Forest...")
         self.model = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=15,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            random_state=42,
-            n_jobs=-1
+            n_estimators=100,  # Nombre d'arbres dans la forêt
+            max_depth=15,  # Profondeur maximale des arbres
+            min_samples_split=5,  # Nombre minimum d'échantillons pour diviser un nœud
+            min_samples_leaf=2,  # Nombre minimum d'échantillons dans une feuille
+            random_state=42,  # Seed pour la reproductibilité
+            n_jobs=-1  # Utiliser tous les cœurs CPU disponibles
         )
-        self.model.fit(X_train_scaled, y_train)
-        # Prédictions
-        y_pred_train = self.model.predict(X_train_scaled)
-        y_pred_test = self.model.predict(X_test_scaled)
-        # Calculer les métriques
+        self.model.fit(X_train_scaled, y_train)  # Entraîner le modèle
+        
+        # ============= 6. PRÉDICTIONS ET ÉVALUATION =============
+        y_pred_train = self.model.predict(X_train_scaled)  # Prédictions sur train
+        y_pred_test = self.model.predict(X_test_scaled)  # Prédictions sur test
+        
+        # Calculer les métriques de performance
         metrics = {
             'train': {
-                'rmse': np.sqrt(mean_squared_error(y_train, y_pred_train)),
-                'mae': mean_absolute_error(y_train, y_pred_train),
-                'r2': r2_score(y_train, y_pred_train)
+                'rmse': np.sqrt(mean_squared_error(y_train, y_pred_train)),  # Root Mean Squared Error
+                'mae': mean_absolute_error(y_train, y_pred_train),  # Mean Absolute Error
+                'r2': r2_score(y_train, y_pred_train)  # R² Score (coefficient de détermination)
             },
             'test': {
                 'rmse': np.sqrt(mean_squared_error(y_test, y_pred_test)),
@@ -120,7 +243,8 @@ class AirQualityPredictor:
                 'r2': r2_score(y_test, y_pred_test)
             }
         }
-        # Afficher les résultats
+        
+        # ============= 7. AFFICHAGE DES RÉSULTATS =============
         logger.info("\n" + "="*50)
         logger.info("📈 RÉSULTATS DE L'ENTRAÎNEMENT")
         logger.info("="*50)
@@ -132,7 +256,9 @@ class AirQualityPredictor:
         logger.info(f"Test MAE:   {metrics['test']['mae']:.2f}")
         logger.info(f"Test R²:    {metrics['test']['r2']:.3f}")
         logger.info("="*50 + "\n")
-        # Importance des features
+        
+        # ============= 8. IMPORTANCE DES FEATURES =============
+        # Afficher les 5 features les plus importantes
         feature_importance = pd.DataFrame({
             'feature': self.feature_names,
             'importance': self.model.feature_importances_
@@ -140,8 +266,10 @@ class AirQualityPredictor:
         logger.info("🔍 Importance des features:")
         for idx, row in feature_importance.head(5).iterrows():
             logger.info(f"  {row['feature']}: {row['importance']:.3f}")
-        # Sauvegarder le modèle
+        
+        # ============= 9. SAUVEGARDE DU MODÈLE =============
         self.save_model()
+        
         return metrics
     def predict(self, current_data, hours_ahead=24):
         """
