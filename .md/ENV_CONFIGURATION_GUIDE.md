@@ -93,24 +93,6 @@ MQTT_PASSWORD=
 
 ---
 
----
-
-## 🤖 Assistant IA (Hugging Face)
-
-**Requis pour faire fonctionner le chat intelligent :**
-
-```env
-HF_API_KEY=votre_clé_hugging_face
-```
-
-### Comment obtenir une clé API :
-1. Créez un compte gratuit sur [huggingface.co](https://huggingface.co/).
-2. Allez dans **Settings** → **Access Tokens**.
-3. Créez un nouveau token de type "Read" et copiez-le dans le fichier `.env`.
-
----
-
----
 
 ## ✅ Minimal Configuration Checklist
 

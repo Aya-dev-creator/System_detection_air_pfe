@@ -187,72 +187,7 @@ class Config:
         'api_key': os.getenv('NASA_API_KEY', os.getenv('nasaapi', ''))
     }
     
-    # ============= CONFIGURATION HUGGING FACE (Assistant IA) =============
-    # Configuration pour l'assistant IA utilisant Hugging Face
-    # Hugging Face propose des modèles de langage gratuits via leur API
-    # Modèle : carte Hub « Inference » / petits instruct (voir https://huggingface.co/models )
-    # Défaut : SmolLM2-1.7B-Instruct — léger, adapté au routeur serverless HF.
-    HF_CONFIG = {
-        # Clé API pour accéder à l'API Hugging Face
-        # Optionnel: sans clé, certaines fonctionnalités sont limitées
-        'api_key': os.getenv('HF_API_KEY', ''),
-        
-        # Nom du modèle de chat à utiliser
-        # SmolLM2-1.7B-Instruct est un modèle léger (1.7 milliards de paramètres)
-        # Idéal pour Raspberry Pi car il consomme peu de ressources
-        'chat_model': os.getenv(
-            'HF_CHAT_MODEL',
-            'HuggingFaceTB/SmolLM2-1.7B-Instruct',
-        ),
-        
-        # URL de l'endpoint de chat Hugging Face
-        # Utilise le routeur serverless qui redirige vers le modèle approprié
-        'chat_url': os.getenv(
-            'HF_CHAT_URL',
-            'https://router.huggingface.co/v1/chat/completions',
-        ),
-    }
 
-    # ============= OPENAI (repli assistant si Hugging Face renvoie 404 / erreur) =============
-    # Configuration pour l'API OpenAI (ChatGPT) comme fallback si Hugging Face échoue
-    # OpenAI est payant mais offre des modèles plus performants
-    OPENAI_CONFIG = {
-        # Clé API pour accéder à l'API OpenAI
-        # Nécessaire pour utiliser ChatGPT
-        'api_key': os.getenv('OPENAI_API_KEY', ''),
-        
-        # Nom du modèle ChatGPT à utiliser
-        # gpt-4o-mini est le modèle le plus économique et rapide
-        'chat_model': os.getenv('OPENAI_CHAT_MODEL', 'gpt-4o-mini'),
-        
-        # URL de l'endpoint de chat OpenAI
-        # Endpoint officiel de l'API OpenAI
-        'chat_url': os.getenv(
-            'OPENAI_CHAT_URL',
-            'https://api.openai.com/v1/chat/completions',
-        ),
-    }
-
-    # ============= GROQ (API compatible OpenAI, compte gratuit sur console.groq.com) =============
-    # Groq propose des modèles LLaMA gratuits et très rapides
-    # API compatible OpenAI, donc facile à intégrer comme fallback
-    # Utile si Hugging Face renvoie 404 (modèle indisponible)
-    GROQ_CONFIG = {
-        # Clé API pour accéder à l'API Groq
-        # Gratuite sur console.groq.com
-        'api_key': os.getenv('GROQ_API_KEY', ''),
-        
-        # Nom du modèle Groq à utiliser
-        # llama-3.1-70b-versatile est un modèle performant (70 milliards de paramètres)
-        'chat_model': os.getenv('GROQ_CHAT_MODEL', 'llama-3.1-70b-versatile'),
-        
-        # URL de l'endpoint de chat Groq
-        # API compatible OpenAI, même format de requête/réponse
-        'chat_url': os.getenv(
-            'GROQ_CHAT_URL',
-            'https://api.groq.com/openai/v1/chat/completions',
-        ),
-    }
     
     @staticmethod
     def get_air_quality_level(value):

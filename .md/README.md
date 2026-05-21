@@ -23,12 +23,8 @@ Pour garantir une stabilité maximale et une consommation de ressources minimale
 - **Géolocalisation des Capteurs** : Affiche la position réelle du système.
 - **Mode Secours (Fallback)** : Si le signal GPS est absent, la carte utilise automatiquement la position fournie par l'API Météo.
 
-### 3. Assistant IA Environnemental
-- **Assistant Intelligent** : Chat intégré basé sur le modèle **Phi-3-mini** via l'API Hugging Face.
-- **Conseils Écologiques** : Posez des questions sur la protection de l'environnement ou l'interprétation des données.
-- **Contexte Réel** : L'IA a accès aux données actuelles de vos capteurs pour vous donner des conseils personnalisés.
 
-### 4. Analyses & Prédictions
+### 3. Analyses & Prédictions
 - **Analytique avancée** : Rapports détaillés sur l'historique des mesures générés en Python.
 - **Prédictions par Machine Learning** : Modèle prédictif intégré pour estimer l'évolution de la qualité de l'air.
 - **Données NASA** : Intégration des événements environnementaux mondiaux.
@@ -66,7 +62,6 @@ python web_server.py
 ### Configuration
 Éditez le fichier `.env` pour configurer vos clés API :
 - `OPENWEATHER_API_KEY` : Pour la météo.
-- `HF_API_KEY` : Pour l'assistant IA (Hugging Face).
 
 ---
 

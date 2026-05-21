@@ -136,18 +136,27 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     Calcule la distance entre deux points GPS en kilomètres.
     Utilisé pour filtrer les évènements NASA proches de la zone mesurée.
     """
+    # Importation locale des modules trigonométriques pour éviter les dépendances inutiles au démarrage
     from math import radians, sin, cos, asin, sqrt
 
     try:
+        # Conversion des coordonnées en nombres flottants (float) pour sécuriser le calcul
         lat1, lon1, lat2, lon2 = map(float, (lat1, lon1, lat2, lon2))
     except (TypeError, ValueError):
+        # Si une coordonnée est absente ou invalide, on retourne None pour éviter une exception
         return None
 
+    # Rayon moyen de la Terre en kilomètres
     r = 6371.0
+    # Calcul de la différence de latitude convertie en radians
     d_lat = radians(lat2 - lat1)
+    # Calcul de la différence de longitude convertie en radians
     d_lon = radians(lon2 - lon1)
+    # Formule mathématique Haversine pour la distance sphérique
     a = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lon / 2) ** 2
+    # Calcul de l'angle central en radians
     c = 2 * asin(sqrt(a))
+    # Retourne le produit du rayon terrestre par l'angle pour obtenir la distance en kilomètres
     return r * c
 
 
@@ -165,49 +174,63 @@ def get_nasa_environment_events(lat=None, lon=None, max_distance_km=1000):
         list[dict]: Liste d'évènements pertinents près de la zone
     """
     global nasa_events_cache
-    # Create a cache key based on the parameters
+    # Création d'une clé de cache unique basée sur les paramètres de recherche
     key = (lat, lon, max_distance_km)
+    # Récupération du timestamp actuel sous forme de secondes
     now = datetime.now().timestamp()
 
-    # Check if we have a valid cache
+    # Vérification de la validité du cache (données présentes et durée de cache non dépassée)
     if nasa_events_cache['data'] is not None and nasa_events_cache['timestamp'] is not None:
         if nasa_events_cache['key'] == key and (now - nasa_events_cache['timestamp']) < nasa_events_cache['cache_duration']:
+            # Retourne les données en cache si elles correspondent aux paramètres et sont fraîches
             return nasa_events_cache['data']
 
-    # Otherwise, fetch new data
+    # Sinon, on interroge l'API NASA EONET
     try:
+        # Paramètres de la requête : ne récupérer que les évènements en cours (ouverts)
         params = {'status': 'open'}
-        # Certaines APIs NASA utilisent api_key, EONET non, mais on garde la clé
+        # Si une clé API NASA est présente dans la configuration, on l'ajoute aux paramètres
         if NASA_API_KEY:
             params['api_key'] = NASA_API_KEY
 
+        # Envoi de la requête HTTP GET vers l'API NASA avec un timeout de 15 secondes
         resp = requests.get(NASA_EONET_URL, params=params, timeout=15)
+        # Si la réponse n'est pas un succès (code HTTP 200), on logge un warning et on s'arrête
         if resp.status_code != 200:
             logger.warning(f"⚠️ Erreur API NASA EONET: {resp.status_code}")
             return []
 
+        # Extraction des données JSON de la réponse
         data = resp.json()
         events = []
 
+        # Parcours de chaque évènement environnemental renvoyé par la NASA
         for event in data.get('events', []):
+            # Récupération des catégories de l'évènement en minuscules
             categories = [c.get('title', '').lower() for c in event.get('categories', [])]
-            # On filtre sur quelques types liés à la qualité de l'air
+            # Création d'une chaîne combinée pour faciliter le filtrage par mots-clés
             text_categories = " ".join(categories)
+            # On ne garde que les évènements liés à l'air (poussière, fumée, incendies, sable, cendres)
             if not any(keyword in text_categories for keyword in ['dust', 'smoke', 'fire', 'wildfire', 'sand', 'ash']):
                 continue
 
+            # Parcours des géométries associées (position géographique de l'évènement)
             for geom in event.get('geometry', []):
                 coords = geom.get('coordinates')
+                # Vérification de la présence de coordonnées valides (longitude, latitude)
                 if not coords or len(coords) < 2:
                     continue
 
                 ev_lon, ev_lat = coords[0], coords[1]
                 distance = None
+                # Si une position utilisateur est fournie, on calcule la distance à l'évènement
                 if lat is not None and lon is not None:
                     distance = _haversine_km(lat, lon, ev_lat, ev_lon)
+                    # Si l'évènement est trop éloigné, on l'ignore
                     if distance is None or distance > max_distance_km:
                         continue
 
+                # Ajout de l'évènement filtré et enrichi dans notre liste locale
                 events.append({
                     'title': event.get('title'),
                     'categories': [c.get('title') for c in event.get('categories', [])],
@@ -217,11 +240,12 @@ def get_nasa_environment_events(lat=None, lon=None, max_distance_km=1000):
                     'date': geom.get('date')
                 })
 
-        # Trier par distance si disponible
+        # Tri des évènements trouvés du plus proche au plus éloigné
         events.sort(key=lambda e: e['distance_km'] if e['distance_km'] is not None else 999999)
+        # On limite le retour aux 10 évènements les plus proches
         events = events[:10]
 
-        # Update cache
+        # Mise à jour du cache global pour éviter de surcharger l'API lors des prochaines visites
         nasa_events_cache['key'] = key
         nasa_events_cache['data'] = events
         nasa_events_cache['timestamp'] = now
@@ -229,6 +253,7 @@ def get_nasa_environment_events(lat=None, lon=None, max_distance_km=1000):
         return events
 
     except Exception as e:
+        # En cas d'erreur réseau ou autre, on logge l'erreur et on retourne une liste vide
         logger.error(f"✗ Erreur récupération évènements NASA: {e}")
         return []
 
@@ -247,8 +272,10 @@ def get_news_sources(country='ma', language='fr', category='lifestyle,health,env
         dict: Réponse JSON de NewsData.io
     """
     try:
+        # Si la clé API NewsData n'est pas configurée dans les variables d'environnement, on ignore l'appel
         if not NEWSDATA_API_KEY:
             return {}
+        # Construction des paramètres requis par l'API NewsData
         params = {
             'apikey': NEWSDATA_API_KEY,
             'country': country,
@@ -256,38 +283,54 @@ def get_news_sources(country='ma', language='fr', category='lifestyle,health,env
             'category': category,
             'prioritydomain': prioritydomain
         }
+        # Envoi de la requête GET avec un timeout de 15 secondes pour éviter le blocage
         response = requests.get(NEWSDATA_SOURCES_URL, params=params, timeout=15)
+        # Gestion des erreurs de retour API
         if response.status_code != 200:
             logger.warning(f"⚠️ Erreur API NewsData: {response.status_code}")
             return {}
 
+        # Conversion et log du nombre de sources récupérées
         data = response.json()
         logger.info(f"✓ Données NewsData récupérées: {len(data.get('results', []))} sources")
         return data
     except Exception as e:
+        # En cas de plantage réseau ou parse, renvoie un dictionnaire vide
         logger.error(f"✗ Erreur récupération sources NewsData: {e}")
         return {}
 
 
 def _fmt_news_meta(item):
+    """Formate les métadonnées d'un article (nom de la source + date de publication)."""
+    # Récupère l'identifiant de la source ou son nom
     src = item.get('source_id') or item.get('source_name') or ''
+    # Récupère la date brute de publication
     raw_date = item.get('pubDate') or item.get('pubdate') or ''
+    # Si la date est trop longue, on la tronque au format 'AAAA-MM-JJ HH:MM'
     if raw_date and len(raw_date) > 16:
         raw_date = raw_date[:16].replace('T', ' ')
+    # Ne garde que les parties non vides
     parts = [p for p in (src, raw_date) if p]
+    # Joint les éléments avec un point médian
     return ' • '.join(parts) if parts else 'Actualité'
 
 
 def _category_to_tag_style(cat):
+    """Associe une catégorie d'actualité à un style CSS et un label en français."""
     c = (str(cat) if cat is not None else '').lower()
+    # Association de la catégorie "Santé"
     if 'health' in c or 'sant' in c:
         return 'health', 'Santé'
+    # Association de la catégorie "Politique"
     if 'politic' in c or 'polit' in c:
         return 'pol', 'Politique'
+    # Association de la catégorie "Environnement"
     if 'environment' in c or 'environ' in c:
         return 'env', 'Environnement'
+    # Association de la catégorie "Climat/Science"
     if 'science' in c or 'tech' in c:
         return 'cli', 'Science'
+    # Fallback pour les autres catégories (ex. lifestyle)
     label = (str(cat) if cat else 'Actualités').replace('_', ' ').strip() or 'Actualités'
     return 'life', label[:40]
 
@@ -295,18 +338,19 @@ def _category_to_tag_style(cat):
 def get_news_articles(country='ma', language='fr', category='environment,health,lifestyle,science'):
     """Articles récents (endpoint /news) avec liens vers les sources."""
     global news_cache
+    # Si pas de clé d'API NewsData configurée, on retourne une liste vide directement
     if not NEWSDATA_API_KEY:
         return []
-    # Create a cache key based on the parameters
+    # Clé de cache unique basée sur les paramètres géographiques et thématiques
     key = (country, language, category)
     now = datetime.now().timestamp()
 
-    # Check if we have a valid cache
+    # Vérifie si le cache contient des données fraîches
     if news_cache['data'] is not None and news_cache['timestamp'] is not None:
         if news_cache['key'] == key and (now - news_cache['timestamp']) < news_cache['cache_duration']:
             return news_cache['data']
 
-    # Otherwise, fetch new data
+    # Sinon, on fait une requête à NewsData.io
     try:
         params = {
             'apikey': NEWSDATA_API_KEY,
@@ -315,21 +359,27 @@ def get_news_articles(country='ma', language='fr', category='environment,health,
             'category': category,
         }
         response = requests.get(NEWSDATA_NEWS_URL, params=params, timeout=20)
+        # Log en cas d'erreur de retour
         if response.status_code != 200:
             logger.warning(f"⚠️ Erreur API NewsData articles: {response.status_code}")
             return []
         data = response.json()
         rows = data.get('results') or []
         out = []
+        # Nettoyage et normalisation des articles reçus
         for row in rows:
+            # Récupération de l'URL de l'article (supporte plusieurs clés de retour possibles)
             link = row.get('link') or row.get('url') or row.get('source_url') or row.get('article_url')
             title = (row.get('title') or '').strip()
+            # Un article doit impérativement avoir un titre et un lien pour être affiché
             if not link or not title:
                 continue
+            # Troncation de la description si trop longue
             desc = (row.get('description') or row.get('content') or '')[:500]
             cat = row.get('category')
             if isinstance(cat, list) and cat:
                 cat = cat[0]
+            # Détermination de la mise en forme du badge de l'article
             tag_style, tag_label = _category_to_tag_style(cat)
             out.append({
                 'tag': tag_label,
@@ -340,9 +390,10 @@ def get_news_articles(country='ma', language='fr', category='environment,health,
                 'url': link,
             })
         logger.info(f"✓ NewsData articles: {len(out)}")
+        # Limite de sécurité à 20 articles
         out = out[:20]
 
-        # Update cache
+        # Mise à jour du cache
         news_cache['key'] = key
         news_cache['data'] = out
         news_cache['timestamp'] = now
@@ -356,18 +407,20 @@ def get_news_articles(country='ma', language='fr', category='environment,health,
 def fetch_rss_environment_news(max_items=14):
     """Articles avec liens via flux RSS (requests + SSL — plus fiable que urllib sur Raspberry Pi)."""
     collected = []
+    # User-Agent personnalisé pour éviter les blocages de certains serveurs de flux RSS
     headers = {
         'User-Agent': 'Mozilla/5.0 (compatible; AirWatch/2.2; +https://airwatch.local)',
         'Accept': 'application/rss+xml, application/xml, text/xml, */*',
     }
-    # Désactiver la vérification SSL sur Raspberry Pi si nécessaire
+    # Sur Raspberry Pi (détecté via l'absence de certains fichiers Linux standards), on désactive SSL si besoin
     verify_ssl = not os.path.exists('/etc/os-release')
     
+    # Parcours des flux RSS de secours configurés
     for feed_url in RSS_FALLBACK_FEEDS:
         if len(collected) >= max_items:
             break
         try:
-            # Essayer avec vérification SSL d'abord, puis sans sur Raspberry Pi
+            # Tentative de requête avec ou sans vérification stricte des certificats SSL
             try:
                 r = requests.get(feed_url, headers=headers, timeout=22, verify=verify_ssl)
             except (requests.exceptions.SSLError, requests.exceptions.ConnectionError):
@@ -375,16 +428,19 @@ def fetch_rss_environment_news(max_items=14):
                 r = requests.get(feed_url, headers=headers, timeout=22, verify=False)
             
             r.raise_for_status()
+            # Parsing de l'arbre XML du flux RSS
             root = ET.fromstring(r.content)
         except Exception as e:
             logger.warning(f'⚠ Flux RSS indisponible {feed_url}: {e}')
             continue
 
+        # Extraction des items de l'arborescence XML
         for item in root.iter():
             if not item.tag.endswith('item') or len(collected) >= max_items:
                 continue
             title = link = desc = ''
             for child in item:
+                # Extraction du nom du tag en ignorant le namespace XML
                 tag = child.tag.split('}')[-1].lower()
                 if tag == 'title' and child.text:
                     title = child.text.strip()
@@ -394,9 +450,11 @@ def fetch_rss_environment_news(max_items=14):
                         link = child.attrib.get('href', '').strip()
                 elif tag in ('description', 'summary') and child.text:
                     txt = child.text.strip()
+                    # Limite la taille de l'extrait affiché
                     if len(txt) > 400:
                         txt = txt[:400] + '…'
                     desc = txt
+            # Si on a un titre et un lien, l'article est prêt
             if title and link:
                 collected.append({
                     'tag': 'Environnement',
@@ -406,8 +464,8 @@ def fetch_rss_environment_news(max_items=14):
                     'summary': desc or 'Article externe.',
                     'url': link,
                 })
+            # Si l'article n'a pas d'URL (rare mais possible), on génère un lien Google Search sur son titre
             elif title and not link:
-                # Fallback: créer un lien de recherche si l'article n'en a pas
                 collected.append({
                     'tag': 'Environnement',
                     'tag_style': 'env',
@@ -425,15 +483,19 @@ def merge_news_article_lists(max_total, *lists):
     """Fusionne plusieurs listes d’articles sans doublon d’URL (ordre conservé)."""
     seen = set()
     out = []
+    # Parcours des listes d'articles fournies en arguments
     for lst in lists:
         for a in lst or []:
             if not isinstance(a, dict):
                 continue
+            # Nettoyage et vérification de la clé unique (URL de l'article)
             u = (a.get('url') or '').strip()
             key = u if u else f"t:{a.get('title','')}"
+            # Déduplication
             if key in seen:
                 continue
             seen.add(key)
+            # Garantir le lien cliquable et l'ajouter à la liste finale
             out.append(ensure_article_has_link(dict(a)))
             if len(out) >= max_total:
                 return out
@@ -446,6 +508,7 @@ def ensure_article_has_link(article):
     u = (a.get('url') or '').strip()
     if u:
         return a
+    # Si l'article n'a pas d'URL, on crée un lien de recherche Web basé sur son titre
     title = (a.get('title') or '').strip()
     if title:
         a['url'] = 'https://www.google.com/search?q=' + urllib.parse.quote_plus(title)
@@ -459,6 +522,7 @@ def normalize_news_source_card(s):
         return None
     name = s.get('name') or s.get('id') or 'Source'
     country = s.get('country')
+    # Normalise l'affichage des pays de diffusion
     if isinstance(country, (list, tuple)):
         country_txt = ', '.join(str(c).upper() for c in country[:8])
         if len(country) > 8:
@@ -466,18 +530,25 @@ def normalize_news_source_card(s):
     else:
         country_txt = str(country or 'MA').upper()
     lang = s.get('language')
+    # Normalise l'affichage des langues supportées
     if isinstance(lang, (list, tuple)):
         lang_txt = ', '.join(str(x).upper() for x in lang[:5])
     else:
         lang_txt = str(lang or 'fr').upper()
     sub = f"{country_txt} — {lang_txt}"
     cat = s.get('category')
+    # Détermination de la catégorie principale
     if isinstance(cat, (list, tuple)) and cat:
         tag_txt = str(cat[0])
     else:
         tag_txt = str(cat or 'Info')
     tag_style, tag_label = _category_to_tag_style(tag_txt)
     return {
+        'name': name,
+        'sub': sub,
+        'tag': tag_label,
+        'tag_style': tag_style,
+    }
         'name': name,
         'sub': sub,
         'tag': tag_label,
