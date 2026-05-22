@@ -31,7 +31,7 @@ from datetime import datetime  # Module pour manipuler les dates et heures
 # ============= IMPORTS DES MODULES DU PROJET =============
 from config import config  # Configuration centrale (variables d'environnement, seuils, etc.)
 from database import AirQualityDatabase  # Gestion de la base de données SQLite3
-from sensors2 import SensorManager, HARDWARE_AVAILABLE  # Gestion des capteurs (MQ-135, DHT11, GPS)
+from sensors import SensorManager, HARDWARE_AVAILABLE  # Gestion des capteurs (MQ-135, DHT11, GPS)
 from ml_model import AirQualityPredictor, generate_synthetic_training_data  # Modèle ML de prédiction
 # from iot_cloud import IoTCloudManager  # Gestion MQTT pour le cloud IoT (désactivé)
 # from alert_system import AlertSystem  # Système d'alertes par email et MQTT (désactivé)
