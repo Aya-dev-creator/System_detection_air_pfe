@@ -25,19 +25,11 @@ Architecture:
 """
 
 # ============= IMPORTS SYSTÈME =============
+import os
+import platform
 import time  # Module pour les pauses et le temps
 from datetime import datetime  # Module pour manipuler les dates et heures
 import logging  # Module pour la journalisation (logs) du système
-
-# ============= IMPORTS RASPBERRY PI (REQUIS) =============
-# Ces imports sont requis pour le fonctionnement sur Raspberry Pi 4
-# Les capteurs MQ-135 et DHT11 nécessitent ce matériel
-import board  # Bibliothèque pour les broches GPIO (Adafruit)
-import busio  # Bibliothèque pour le bus I2C
-import adafruit_dht  # Bibliothèque pour le capteur DHT11
-import RPi.GPIO as GPIO  # Bibliothèque pour le contrôle GPIO
-import adafruit_ads1x15.ads1115 as ADS  # Bibliothèque pour l'ADC ADS1115
-from adafruit_ads1x15.analog_in import AnalogIn  # Classe pour les entrées analogiques
 
 # ============= IMPORTS POUR LA GÉOLOCALISATION =============
 import requests  # Bibliothèque pour les requêtes HTTP (géolocalisation IP)
@@ -45,6 +37,34 @@ import requests  # Bibliothèque pour les requêtes HTTP (géolocalisation IP)
 # Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ============= IMPORTS RASPBERRY PI (OPTIONNELS) =============
+# Ces imports sont requis uniquement sur un Raspberry Pi réel
+# Sur Windows ou un environnement de développement, ils sont ignorés
+IS_RPI = platform.system() == "Linux" and platform.machine().lower().startswith(("arm", "aarch64"))
+
+board = None
+busio = None
+adafruit_dht = None
+GPIO = None
+ADS = None
+AnalogIn = None
+HARDWARE_AVAILABLE = False
+
+if IS_RPI:
+    try:
+        import board  # Bibliothèque pour les broches GPIO (Adafruit)
+        import busio  # Bibliothèque pour le bus I2C
+        import adafruit_dht  # Bibliothèque pour le capteur DHT11
+        import RPi.GPIO as GPIO  # Bibliothèque pour le contrôle GPIO
+        import adafruit_ads1x15.ads1115 as ADS  # Bibliothèque pour l'ADC ADS1115
+        from adafruit_ads1x15.analog_in import AnalogIn  # Classe pour les entrées analogiques
+        HARDWARE_AVAILABLE = True
+    except Exception as e:
+        logger.warning(f"Raspberry Pi hardware libraries unavailable: {e}")
+        HARDWARE_AVAILABLE = False
+else:
+    logger.warning("Raspberry Pi hardware libraries are unavailable on this platform. Sensor hardware will run in fallback mode.")
 
 class MQ135Sensor:
     """
@@ -98,7 +118,12 @@ class MQ135Sensor:
         self.r0 = 10.0  # Résistance de calibration R0 (en kΩ)
         self.ads = None  # Instance de l'ADC ADS1115
         self.adc_channel_obj = None  # Objet du canal ADC
-        
+        self.available = HARDWARE_AVAILABLE  # Indique si le hardware Raspberry Pi est disponible
+
+        if not self.available:
+            logger.warning("MQ-135 hardware unavailable; fonction de lecture en mode simulation.")
+            return
+
         # ============= INITIALISATION DE L'ADS1115 (ADC) =============
         # L'ADS1115 est un convertisseur analogique-numérique 16-bit
         # Il communique via le bus I2C (adresse par défaut: 0x48)
@@ -198,6 +223,10 @@ class MQ135Sensor:
             bool: True si le seuil est dépassé (DOUT = LOW), False sinon
                   Retourne False en cas d'erreur
         """
+        if not getattr(self, 'available', False):
+            logger.warning("MQ-135 digital read unavailable; returning False.")
+            return False
+
         try:
             # DOUT est LOW quand le seuil de gaz est dépassé
             return GPIO.input(self.digital_pin) == GPIO.LOW
@@ -280,6 +309,17 @@ class MQ135Sensor:
                   - alert: True si le seuil est dépassé, False sinon
                   Retourne None en cas d'erreur
         """
+        if not getattr(self, 'available', False):
+            logger.warning("MQ-135 hardware unavailable, renvoyant valeurs par défaut.")
+            return {
+                'sensor': 'MQ-135',
+                'timestamp': datetime.now().isoformat(),
+                'raw_value': None,
+                'ppm': None,
+                'unit': 'PPM',
+                'alert': False
+            }
+
         try:
             # Lire la valeur analogique brute
             analog_value = self.read_analog_value()
@@ -397,7 +437,13 @@ class DHT11Sensor:
                       Sur Raspberry Pi, GPIO 4 est couramment utilisé pour le DHT11
         """
         self.pin = pin  # Stocker le numéro de broche GPIO
-        
+        self.available = HARDWARE_AVAILABLE
+        self.sensor = None
+
+        if not self.available:
+            logger.warning("DHT11 hardware unavailable; lecture en mode simulation.")
+            return
+
         # Essayer d'abord avec board.D4, sinon utiliser le numéro de pin directement
         # board.D4 est la notation préférée pour la bibliothèque adafruit_dht
         try:
@@ -428,6 +474,16 @@ class DHT11Sensor:
                   - humidity_unit: Unité d'humidité ('%')
                   Retourne un dictionnaire avec None pour les valeurs en cas d'erreur
         """
+        if not getattr(self, 'available', False):
+            return {
+                'sensor': 'DHT11',
+                'timestamp': datetime.now().isoformat(),
+                'temperature': None,
+                'humidity': None,
+                'temp_unit': '°C',
+                'humidity_unit': '%'
+            }
+
         try:
             # Lecture réelle du capteur avec gestion d'erreur améliorée
             try:
@@ -484,7 +540,8 @@ class DHT11Sensor:
         Elle doit être appelée avant de terminer le programme pour éviter
         les problèmes de verrouillage des broches GPIO.
         """
-        self.sensor.exit()  # Libérer les ressources du capteur
+        if self.sensor is not None:
+            self.sensor.exit()  # Libérer les ressources du capteur
 
 class GPSSensor:
     """

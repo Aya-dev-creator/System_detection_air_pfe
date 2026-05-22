@@ -31,7 +31,7 @@ from datetime import datetime  # Module pour manipuler les dates et heures
 # ============= IMPORTS DES MODULES DU PROJET =============
 from config import config  # Configuration centrale (variables d'environnement, seuils, etc.)
 from database import AirQualityDatabase  # Gestion de la base de données SQLite3
-from sensors2 import SensorManager  # Gestion des capteurs (MQ-135, DHT11, GPS)
+from sensors2 import SensorManager, HARDWARE_AVAILABLE  # Gestion des capteurs (MQ-135, DHT11, GPS)
 from ml_model import AirQualityPredictor, generate_synthetic_training_data  # Modèle ML de prédiction
 # from iot_cloud import IoTCloudManager  # Gestion MQTT pour le cloud IoT (désactivé)
 # from alert_system import AlertSystem  # Système d'alertes par email et MQTT (désactivé)
@@ -96,6 +96,8 @@ class AirQualitySystem:
         Si une erreur survient lors de l'initialisation, le programme s'arrête.
         """
         logger.info("DÉMARRAGE DU SYSTÈME DE SURVEILLANCE DE QUALITÉ DE L'AIR")
+        if not HARDWARE_AVAILABLE:
+            logger.warning("⚠ Raspberry Pi sensor hardware unavailable. Sensor readings will run in fallback mode.")
         
         # ============= VARIABLES DE CONTRÔLE =============
         self.running = False  # Flag indiquant si le système est en cours d'exécution
