@@ -5,7 +5,7 @@ python-dotenv==1.0.0
 # SQLite3 is built into Python, no need to install
 
 # Raspberry Pi GPIO and Sensors
-RPi.GPIO==0.7.1 ; sys_platform == "linux"
+RPi.GPIO==0.7.1
 adafruit-circuitpython-dht==4.0.3
 adafruit-blinka==8.20.0
 adafruit-circuitpython-ads1x15
@@ -25,3 +25,6 @@ schedule==1.2.0
 
 # HTTP Requests (weather API, news API, NASA API, RSS feeds, IP geolocation)
 requests==2.31.0
+
+# Mistral AI API for Chatbot
+mistralai==0.4.2

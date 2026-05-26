@@ -16,6 +16,7 @@ import numpy as np
 from config import config
 from database import AirQualityDatabase
 from ml_model import AirQualityPredictor
+from weather_chatbot import get_chatbot
 
 # Identifiant affiché dans le pied de page et /api/health (vérifie que le bon code est déployé)
 AIRWATCH_BUILD = '2026-05-13c'
@@ -59,12 +60,15 @@ RSS_FALLBACK_FEEDS = [
     'https://www.actu-environnement.com/ae/news/news_rss.xml',
 ]
 
-# Cache pour les données météo (éviter trop de requêtes API)
-weather_cache = {
-    'data': None,
-    'timestamp': None,
-    'cache_duration': 600  # 10 minutes
-}
+# Cache météo par localisation : chaque visiteur reçoit la météo de SA position
+# Clé = coordonnées GPS arrondies, ou nom de ville, ou 'default'
+_weather_caches = {}  # dict: cache_key (str) -> {'data': dict, 'timestamp': datetime}
+WEATHER_CACHE_DURATION = 600  # Durée du cache météo en secondes (10 min)
+
+# Cache géolocalisation IP : associe une adresse IP à des coordonnées GPS
+# Permet d'éviter de sur-solliciter ip-api.com (limite gratuite : 45 req/min)
+_ip_geo_cache = {}  # dict: ip_str -> {'data': dict | None, 'timestamp': float}
+IP_GEO_CACHE_DURATION = 3600  # Durée du cache IP en secondes (1 heure)
 
 # Cache for NASA events (environmental events from NASA EONET)
 nasa_events_cache = {
@@ -158,6 +162,99 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     c = 2 * asin(sqrt(a))
     # Retourne le produit du rayon terrestre par l'angle pour obtenir la distance en kilomètres
     return r * c
+
+
+def get_client_ip():
+    """
+    Récupère l'adresse IP réelle du visiteur depuis les headers HTTP.
+    Fonctionne correctement derrière Cloudflare, Nginx et autres reverse proxies.
+
+    Priorité des headers :
+        1. CF-Connecting-IP  — header Cloudflare contenant l'IP client originale
+        2. X-Forwarded-For   — standard proxy ; le premier élément est l'IP client
+        3. request.remote_addr — connexion directe (développement local)
+
+    Returns:
+        str: Adresse IP du visiteur
+    """
+    # Header spécifique à Cloudflare (le plus fiable pour votre hébergement)
+    cf_ip = request.headers.get('CF-Connecting-IP', '').strip()
+    if cf_ip:
+        return cf_ip
+
+    # Header standard reverse proxy — peut contenir plusieurs IPs séparées par virgule
+    forwarded_for = request.headers.get('X-Forwarded-For', '')
+    if forwarded_for:
+        first_ip = forwarded_for.split(',')[0].strip()
+        if first_ip:
+            return first_ip
+
+    # Connexion directe (sans proxy, ex. développement local)
+    return request.remote_addr or '127.0.0.1'
+
+
+def get_ip_geolocation(ip):
+    """
+    Convertit une adresse IP en coordonnées GPS via l'API gratuite ip-api.com.
+    Aucune clé API requise. Limite gratuite : 45 requêtes/minute.
+
+    Les IPs locales/privées (127.0.0.1, 192.168.x.x, etc.) retournent None
+    afin d'utiliser la position par défaut (définie dans config.py).
+
+    Args:
+        ip (str): Adresse IP du visiteur
+
+    Returns:
+        dict | None: {'lat', 'lon', 'city', 'country', 'countryCode', 'region'}
+                     ou None si IP locale ou erreur réseau
+    """
+    import ipaddress
+
+    # Rejeter les IPs privées / loopback — elles ne peuvent pas être géolocalisées
+    try:
+        addr = ipaddress.ip_address(ip)
+        if addr.is_private or addr.is_loopback or addr.is_link_local:
+            logger.info(f"IP locale/privée ({ip}) — position par défaut utilisée")
+            return None
+    except ValueError:
+        logger.warning(f"Adresse IP invalide : {ip}")
+        return None
+
+    # Vérifier le cache pour éviter des appels répétés pour la même IP
+    now = datetime.now().timestamp()
+    cached = _ip_geo_cache.get(ip)
+    if cached and (now - cached['timestamp']) < IP_GEO_CACHE_DURATION:
+        return cached['data']  # Peut être None si la géolocalisation avait échoué
+
+    # Appel à ip-api.com — gratuit, sans authentification
+    try:
+        url = f'http://ip-api.com/json/{ip}?fields=status,message,lat,lon,city,country,countryCode,regionName'
+        resp = requests.get(url, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('status') == 'success':
+                result = {
+                    'lat': float(data['lat']),
+                    'lon': float(data['lon']),
+                    'city': data.get('city', ''),
+                    'country': data.get('country', ''),
+                    'countryCode': data.get('countryCode', ''),
+                    'region': data.get('regionName', ''),
+                }
+                _ip_geo_cache[ip] = {'data': result, 'timestamp': now}
+                logger.info(
+                    f"Géolocalisation IP {ip} → {result['city']}, "
+                    f"{result['country']} ({result['lat']:.4f}, {result['lon']:.4f})"
+                )
+                return result
+            else:
+                logger.warning(f"ip-api.com échec pour {ip} : {data.get('message', '?')}")
+    except Exception as e:
+        logger.warning(f"Erreur géolocalisation IP {ip} : {e}")
+
+    # Mettre None en cache pour éviter de spammer l'API en cas d'erreur
+    _ip_geo_cache[ip] = {'data': None, 'timestamp': now}
+    return None
 
 
 def get_nasa_environment_events(lat=None, lon=None, max_distance_km=1000):
@@ -254,7 +351,7 @@ def get_nasa_environment_events(lat=None, lon=None, max_distance_km=1000):
 
     except Exception as e:
         # En cas d'erreur réseau ou autre, on logge l'erreur et on retourne une liste vide
-        logger.error(f"✗ Erreur récupération évènements NASA: {e}")
+        logger.error(f"Erreur récupération évènements NASA: {e}")
         return []
 
 
@@ -389,7 +486,7 @@ def get_news_articles(country='ma', language='fr', category='environment,health,
                 'summary': (desc or '').strip() or "Voir l'article sur le site de la source.",
                 'url': link,
             })
-        logger.info(f"✓ NewsData articles: {len(out)}")
+        logger.info(f"NewsData articles: {len(out)}")
         # Limite de sécurité à 20 articles
         out = out[:20]
 
@@ -400,7 +497,7 @@ def get_news_articles(country='ma', language='fr', category='environment,health,
 
         return out
     except Exception as e:
-        logger.error(f"✗ Erreur récupération articles NewsData: {e}")
+        logger.error(f"Erreur récupération articles NewsData: {e}")
         return []
 
 
@@ -475,7 +572,7 @@ def fetch_rss_environment_news(max_items=14):
                     'url': 'https://www.google.com/search?q=' + urllib.parse.quote_plus(title),
                 })
     if collected:
-        logger.info(f'✓ RSS: {len(collected)} articles avec liens')
+        logger.info(f'RSS: {len(collected)} articles avec liens')
     return collected[:max_items]
 
 
@@ -562,12 +659,25 @@ def get_weather_data(lat=None, lon=None, city=None):
     Returns:
         dict: Données météo ou None si erreur
     """
-    # Vérifier le cache
-    if weather_cache['data'] and weather_cache['timestamp']:
-        age = (datetime.now() - weather_cache['timestamp']).seconds
-        if age < weather_cache['cache_duration']:
-            logger.info("Utilisation des données météo en cache")
-            return weather_cache['data']
+    # Construire une clé de cache unique par localisation
+    # (permet à chaque visiteur d'avoir la météo de sa propre position)
+    if lat and lon:
+        try:
+            cache_key = f"coords:{round(float(lat), 2)}:{round(float(lon), 2)}"
+        except (TypeError, ValueError):
+            cache_key = "default"
+    elif city:
+        cache_key = f"city:{str(city).lower().strip()}"
+    else:
+        cache_key = "default"
+
+    # Vérifier le cache pour cette position
+    _cached = _weather_caches.get(cache_key)
+    if _cached and _cached.get('data') and _cached.get('timestamp'):
+        age = (datetime.now() - _cached['timestamp']).seconds
+        if age < WEATHER_CACHE_DURATION:
+            logger.info(f"Météo en cache pour {cache_key}")
+            return _cached['data']
     
     if not WEATHER_API_KEY or WEATHER_API_KEY == 'your_api_key_here':
         logger.warning("Clé API météo non configurée")
@@ -633,9 +743,11 @@ def get_weather_data(lat=None, lon=None, city=None):
                 weather_data['rain_1h'] = data['rain'].get('1h', 0)
                 weather_data['rain_3h'] = data['rain'].get('3h', 0)
             
-            # Mettre en cache
-            weather_cache['data'] = weather_data
-            weather_cache['timestamp'] = datetime.now()
+            # Stocker dans le cache par position (clé unique par localisation)
+            _weather_caches[cache_key] = {
+                'data': weather_data,
+                'timestamp': datetime.now()
+            }
             
             logger.info(f"Données météo récupérées: {weather_data['city']}, {weather_data['temperature']}°C")
             return weather_data
@@ -729,7 +841,7 @@ def get_weather_forecast(lat=None, lon=None, city=None, days=5):
             return {'success': False, 'error': 'API error'}
             
     except Exception as e:
-        logger.error(f"✗ Erreur prévisions météo: {e}")
+        logger.error(f"Erreur prévisions météo: {e}")
         return {'success': False, 'error': str(e)}
 
 
@@ -741,27 +853,36 @@ def index():
     Page d'accueil principale - Dashboard moderne 100% No-JS
     Toutes les données sont injectées côté serveur
     """
-    # 1. Données Météo Actuelles
-    weather = get_weather_data()
-    
+    # 0. Géolocalisation du visiteur par son adresse IP
+    #    Fonctionne derrière Cloudflare grâce au header CF-Connecting-IP
+    #    Ainsi la météo et la carte reflètent la position du visiteur,
+    #    pas celle du Raspberry Pi qui héberge le code.
+    _client_ip = get_client_ip()
+    _client_geo = get_ip_geolocation(_client_ip)
+    _client_lat = _client_geo['lat'] if _client_geo else None
+    _client_lon = _client_geo['lon'] if _client_geo else None
+
+    # 1. Données Météo selon la position du visiteur (pas du Raspberry Pi)
+    weather = get_weather_data(lat=_client_lat, lon=_client_lon)
+
     # 2. Dernières données capteurs
     latest_readings = db.get_latest_readings(limit=1)
     current_sensor = latest_readings[0] if latest_readings else None
-    
+
     # 3. Statistiques 24h
     stats = db.get_statistics(hours=24)
-    
-    # 4. Prévisions météo (5 jours)
-    forecast_data = get_weather_forecast(days=5)
+
+    # 4. Prévisions météo (5 jours) pour la position du visiteur
+    forecast_data = get_weather_forecast(lat=_client_lat, lon=_client_lon, days=5)
     forecasts = forecast_data.get('forecasts', []) if forecast_data.get('success') else []
-    
+
     # 5. Alertes actives
     alerts = db.get_recent_alerts(limit=5)
-    
+
     # 6. Infos de Qualité d'Air
     aqi_value = current_sensor['air_quality_ppm'] if current_sensor else 0
     aqi_info = config.get_air_quality_level(aqi_value)
-    
+
     now_str = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
     return render_template(
         'dashboard.html',
@@ -774,6 +895,7 @@ def index():
         aqi=aqi_info,
         aqi_value=round(aqi_value, 1),
         now_str=now_str,
+        client_geo=_client_geo,
     )
 
 
@@ -830,14 +952,27 @@ def map_view():
 
     loc = locations[0]
 
-    # Centre carte : TOUJOURS Casablanca (33.5731, -7.5898) par défaut
-    # GPS et météo sont affichés mais ne changent pas le centre de la carte
-    weather = get_weather_data()
-    home_lat = float(config.MAP_CENTER_LAT)  # Casablanca
-    home_lon = float(config.MAP_CENTER_LON)  # Casablanca
-    city_name = config.WEATHER_DEFAULT_QUERY.split(',')[0].replace('+', ' ')
-    
-    # Toujours utiliser Casablanca comme centre de carte
+    # Géolocalisation du visiteur pour centrer la carte sur SA position
+    # (et non sur Casablanca ou sur le Raspberry Pi)
+    _client_ip = get_client_ip()
+    _client_geo = get_ip_geolocation(_client_ip)
+
+    if _client_geo:
+        # Le visiteur a été géolocalisé : centrer sur sa position
+        home_lat = _client_geo['lat']
+        home_lon = _client_geo['lon']
+        city_name = _client_geo.get('city') or config.WEATHER_DEFAULT_QUERY.split(',')[0].replace('+', ' ')
+        logger.info(f"Carte centrée sur la position du visiteur : {city_name} ({home_lat:.4f}, {home_lon:.4f})")
+    else:
+        # IP locale ou non géolocalisable : repli sur Casablanca (position du capteur)
+        home_lat = float(config.MAP_CENTER_LAT)
+        home_lon = float(config.MAP_CENTER_LON)
+        city_name = config.WEATHER_DEFAULT_QUERY.split(',')[0].replace('+', ' ')
+
+    # Données météo pour la position du visiteur
+    weather = get_weather_data(lat=home_lat, lon=home_lon)
+
+    # Centre de la carte = position du visiteur (ou défaut si non disponible)
     map_lat, map_lon = home_lat, home_lon
 
     sensor_gps = None
@@ -1730,7 +1865,7 @@ def initialize_server():
         logger.info("  → Données météo de test seront utilisées")
     
     logger.info("")
-    logger.info("✓ Serveur web initialisé avec succès")
+    logger.info("Serveur web initialisé avec succès")
     logger.info("")
 
 
@@ -1754,6 +1889,118 @@ def toggle_theme():
     current_theme = session.get('theme', 'dark')
     session['theme'] = 'light' if current_theme == 'dark' else 'dark'
     return redirect(request.referrer or url_for('index'))
+
+
+# ============= WEATHER CHATBOT ROUTES =============
+
+@app.route('/chatbot', methods=['GET', 'POST'])
+def chatbot():
+    """Weather chatbot interface without JavaScript"""
+    # Initialize chat history in session if not present
+    if 'chat_history' not in session:
+        session['chat_history'] = [
+            {
+                'role': 'assistant',
+                'content': "👋 Bonjour ! Je suis votre assistant météo intelligent. Comment puis-je vous aider aujourd'hui ?",
+                'timestamp': datetime.now().strftime('%H:%M')
+            }
+        ]
+    
+    if request.method == 'POST':
+        action = request.form.get('action', '').strip()
+        user_input = request.form.get('user_input', '').strip()
+        quick_action = request.form.get('quick_action', '').strip()
+        
+        if action == 'reset':
+            session['chat_history'] = [
+                {
+                    'role': 'assistant',
+                    'content': "🔄 Conversation réinitialisée ! Posez-moi vos questions sur la météo ou la qualité de l'air.",
+                    'timestamp': datetime.now().strftime('%H:%M')
+                }
+            ]
+            session.modified = True
+            return redirect(url_for('chatbot') + '#bottom')
+        
+        # Determine the message content
+        message_to_send = user_input
+        if quick_action:
+            message_to_send = quick_action
+            
+        if message_to_send:
+            # Add user message to history
+            history = session['chat_history']
+            history.append({
+                'role': 'user',
+                'content': message_to_send,
+                'timestamp': datetime.now().strftime('%H:%M')
+            })
+            session['chat_history'] = history
+            session.modified = True
+            
+            try:
+                # Get current weather data for context
+                weather_context = get_weather_data() or {}
+                if 'description' in weather_context:
+                    weather_context['weather_type'] = weather_context['description']
+                
+                # Get chatbot instance
+                chatbot_inst = get_chatbot()
+                
+                # Sync session history to chatbot instance (excluding the last one we just appended)
+                chatbot_inst.conversation_history = [
+                    {'role': msg['role'], 'content': msg['content']}
+                    for msg in session['chat_history'][:-1]
+                ]
+                
+                # Get response from chatbot
+                response = chatbot_inst.chat(message_to_send, weather_context=weather_context)
+                
+                if response.get('status') == 'success':
+                    assistant_msg = response.get('message', '')
+                else:
+                    assistant_msg = f"Désolé, j'ai rencontré une erreur : {response.get('message')}"
+                    
+            except Exception as e:
+                logger.error(f"Chatbot error: {str(e)}")
+                assistant_msg = "Désolé, une erreur est survenue lors de la communication avec l'IA."
+                
+            # Add assistant message to history
+            history = session['chat_history']
+            history.append({
+                'role': 'assistant',
+                'content': assistant_msg,
+                'timestamp': datetime.now().strftime('%H:%M')
+            })
+            session['chat_history'] = history
+            session.modified = True
+            
+            return redirect(url_for('chatbot') + '#bottom')
+            
+    return render_template(
+        'chatbot.html',
+        theme=session.get('theme', 'dark'),
+        app_build=AIRWATCH_BUILD,
+        active_nav='chatbot',
+        chat_history=session['chat_history']
+    )
+
+
+# Keep simple placeholders/compatibility API endpoints that return standard error/unsupported response in case of external requests
+@app.route('/api/chatbot/message', methods=['POST'])
+def chatbot_message():
+    return jsonify({'status': 'error', 'message': 'API deprecated. Use /chatbot form submission instead.'}), 400
+
+
+@app.route('/api/chatbot/advice', methods=['GET'])
+def chatbot_advice():
+    return jsonify({'status': 'error', 'message': 'API deprecated. Use /chatbot form submission instead.'}), 400
+
+
+@app.route('/api/chatbot/reset', methods=['POST'])
+def chatbot_reset():
+    return jsonify({'status': 'error', 'message': 'API deprecated. Use /chatbot form submission instead.'}), 400
+
 
 if __name__ == '__main__':
     # Initialiser le serveur

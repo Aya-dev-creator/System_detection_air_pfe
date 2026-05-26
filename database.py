@@ -105,10 +105,10 @@ class AirQualityDatabase:
             # au lieu de leur index (ex: row[2])
             self.connection.row_factory = sqlite3.Row
             
-            logger.info("✓ Connexion à la base de données établie avec succès")
+            logger.info("Connexion à la base de données établie avec succès")
             return True
         except Exception as e:
-            logger.error(f"✗ Erreur de connexion à la base de données: {e}")
+            logger.error(f"Erreur de connexion à la base de données: {e}")
             return False
     
     def create_tables(self):
@@ -225,11 +225,11 @@ class AirQualityDatabase:
             
             # Valider toutes les modifications
             self.connection.commit()
-            logger.info("✓ Toutes les tables ont été créées avec succès")
+            logger.info("Toutes les tables ont été créées avec succès")
             return True
             
         except Exception as e:
-            logger.error(f"✗ Erreur lors de la création des tables: {e}")
+            logger.error(f"Erreur lors de la création des tables: {e}")
             self.connection.rollback()  # Annuler les modifications en cas d'erreur
             return False
     
@@ -274,10 +274,10 @@ class AirQualityDatabase:
             
             self.connection.commit()
             user_id = cursor.lastrowid  # Récupérer l'ID de l'utilisateur
-            logger.info(f"✓ Utilisateur enregistré/ajouté: {email}")
+            logger.info(f"Utilisateur enregistré/ajouté: {email}")
             return user_id
         except Exception as e:
-            logger.error(f"✗ Erreur lors de l'enregistrement de l'utilisateur: {e}")
+            logger.error(f"Erreur lors de l'enregistrement de l'utilisateur: {e}")
             self.connection.rollback()  # Annuler les modifications en cas d'erreur
             return None
     
@@ -333,11 +333,11 @@ class AirQualityDatabase:
             record_id = cursor.lastrowid  # Récupérer l'ID auto-généré
             self.connection.commit()  # Valider la transaction
             
-            logger.info(f"✓ Données capteur insérées avec ID: {record_id}")
+            logger.info(f"Données capteur insérées avec ID: {record_id}")
             return record_id
             
         except Exception as e:
-            logger.error(f"✗ Erreur lors de l'insertion des données: {e}")
+            logger.error(f"Erreur lors de l'insertion des données: {e}")
             self.connection.rollback()  # Annuler les modifications en cas d'erreur
             return None
     
@@ -379,7 +379,7 @@ class AirQualityDatabase:
             return [dict(row) for row in results]
             
         except Exception as e:
-            logger.error(f"✗ Erreur lors de la récupération des données: {e}")
+            logger.error(f"Erreur lors de la récupération des données: {e}")
             return []
     
     def get_readings_by_timerange(self, start_time, end_time):
@@ -420,7 +420,7 @@ class AirQualityDatabase:
             return [dict(row) for row in results]
             
         except Exception as e:
-            logger.error(f"✗ Erreur lors de la récupération par intervalle: {e}")
+            logger.error(f"Erreur lors de la récupération par intervalle: {e}")
             return []
     
     def get_statistics(self, hours=24):
@@ -475,7 +475,7 @@ class AirQualityDatabase:
             return dict(result) if result else {}
             
         except Exception as e:
-            logger.error(f"✗ Erreur lors du calcul des statistiques: {e}")
+            logger.error(f"Erreur lors du calcul des statistiques: {e}")
             return {}
     
     def insert_prediction(self, predicted_for, predicted_aqi, confidence, model_version):
@@ -515,11 +515,11 @@ class AirQualityDatabase:
             prediction_id = cursor.lastrowid  # Récupérer l'ID auto-généré
             self.connection.commit()  # Valider la transaction
             
-            logger.info(f"✓ Prédiction insérée avec ID: {prediction_id}")
+            logger.info(f"Prédiction insérée avec ID: {prediction_id}")
             return prediction_id
             
         except Exception as e:
-            logger.error(f"✗ Erreur lors de l'insertion de la prédiction: {e}")
+            logger.error(f"Erreur lors de l'insertion de la prédiction: {e}")
             self.connection.rollback()  # Annuler les modifications en cas d'erreur
             return None
     
@@ -568,11 +568,11 @@ class AirQualityDatabase:
             alert_id = cursor.lastrowid  # Récupérer l'ID auto-généré
             self.connection.commit()  # Valider la transaction
             
-            logger.info(f"✓ Alerte créée avec ID: {alert_id} - Sévérité: {severity}")
+            logger.info(f"Alerte créée avec ID: {alert_id} - Sévérité: {severity}")
             return alert_id
             
         except Exception as e:
-            logger.error(f"✗ Erreur lors de la création de l'alerte: {e}")
+            logger.error(f"Erreur lors de la création de l'alerte: {e}")
             self.connection.rollback()  # Annuler les modifications en cas d'erreur
             return None
     
@@ -611,7 +611,7 @@ class AirQualityDatabase:
             return [dict(row) for row in results]
             
         except Exception as e:
-            logger.error(f"✗ Erreur lors de la récupération des alertes: {e}")
+            logger.error(f"Erreur lors de la récupération des alertes: {e}")
             return []
     
     def get_recent_alerts(self, limit=10):
@@ -646,7 +646,7 @@ class AirQualityDatabase:
             # Convertir chaque ligne (Row) en dictionnaire
             return [dict(row) for row in results]
         except Exception as e:
-            logger.error(f"✗ Erreur get_recent_alerts: {e}")
+            logger.error(f"Erreur get_recent_alerts: {e}")
             return []
     
     def resolve_alert(self, alert_id):
@@ -682,7 +682,7 @@ class AirQualityDatabase:
             cursor.execute(query, (alert_id,))
             self.connection.commit()  # Valider la transaction
             
-            logger.info(f"✓ Alerte {alert_id} marquée comme résolue")
+            logger.info(f"Alerte {alert_id} marquée comme résolue")
             return True
             
         except Exception as e:
@@ -704,7 +704,7 @@ class AirQualityDatabase:
         """
         if self.connection:
             self.connection.close()  # Fermer la connexion SQLite
-            logger.info("✓ Connexion à la base de données fermée")
+            logger.info("Connexion à la base de données fermée")
 
 # Instance globale de la base de données
 # Cette instance est créée au chargement du module et peut être importée

@@ -69,7 +69,7 @@ python web_server.py
 - `web_server.py` : Cœur de l'application (Flask).
 - `database.py` : Gestion de la base de données SQLite.
 - `ml_model.py` : Modèle de prédiction Intelligence Artificielle.
-- `sensors2.py` : Driver pour les capteurs physiques (DHT11, MQ-135, GPS).
+- `sensors.py` : Driver consolidé pour les capteurs physiques (DHT11, MQ-135, GPS).
 - `templates/` : Pages HTML (SSR avec Jinja2).
 - `static/css/` : Design et thèmes (Sans JS).
 

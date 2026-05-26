@@ -51,7 +51,7 @@
 {% block content %}
 <header class="header">
     <div class="header-left">
-        <h2 class="page-title">📈 Prédictions IA</h2>
+        <h2 class="page-title">Prédictions IA</h2>
         <p class="page-subtitle">Prévisions de qualité de l'air pour les 24 prochaines heures</p>
     </div>
     <div class="header-right">
@@ -62,13 +62,13 @@
 <div class="page-wrap">
     {% if peak_banner %}
     <div class="banner-alert">
-        <span style="font-size:1.5rem;">⚠️</span>
+        <span style="font-size:1.5rem;">!</span>
         <div>{{ peak_banner.detail }}</div>
     </div>
     {% endif %}
 
     <div class="pred-table-wrap">
-        <h3>🕐 Prévisions heure par heure</h3>
+        <h3>Prévisions heure par heure</h3>
         <div style="overflow-x:auto;">
             <table class="pred-table">
                 <thead>
@@ -99,7 +99,7 @@
         </div>
     </div>
 
-    <h3 style="margin-bottom:var(--spacing-lg);font-size:1.1rem;">💡 Recommandations IA</h3>
+    <h3 style="margin-bottom:var(--spacing-lg);font-size:1.1rem;">Recommandations IA</h3>
     <div class="reco-grid">
         {% for c in reco_cards %}
         <div class="reco-card">

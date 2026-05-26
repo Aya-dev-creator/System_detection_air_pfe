@@ -103,7 +103,7 @@ class AirQualityPredictor:
         os.makedirs('./models', exist_ok=True)  # Dossier pour les modèles
         os.makedirs('./data', exist_ok=True)  # Dossier pour les données
         
-        logger.info("✓ Prédicteur de qualité de l'air initialisé")
+        logger.info("Prédicteur de qualité de l'air initialisé")
     def create_features(self, df):
         """
         Crée les features pour le modèle ML à partir des données brutes
@@ -127,7 +127,7 @@ class AirQualityPredictor:
             DataFrame: DataFrame avec features engineered
                       Les lignes avec NaN sont supprimées (créées par lag/rolling)
         """
-        logger.info("🔧 Création des features...")
+        logger.info("Creation des features...")
         df = df.copy()  # Copier le DataFrame pour éviter de modifier l'original
         
         # Convertir timestamp en datetime
@@ -189,7 +189,7 @@ class AirQualityPredictor:
                   - train: Métriques sur les données d'entraînement (RMSE, MAE, R²)
                   - test: Métriques sur les données de test (RMSE, MAE, R²)
         """
-        logger.info("🎓 Début de l'entraînement du modèle...")
+        logger.info("Debut de l'entraînement du modèle...")
         
         # ============= 1. CRÉATION DES FEATURES =============
         df = self.create_features(data)  # Créer les features ML
@@ -205,8 +205,8 @@ class AirQualityPredictor:
             X, y, test_size=test_size, random_state=42, shuffle=False
         )
         
-        logger.info(f"📊 Données d'entraînement: {len(X_train)} échantillons")
-        logger.info(f"📊 Données de test: {len(X_test)} échantillons")
+        logger.info(f"Données d'entraînement: {len(X_train)} échantillons")
+        logger.info(f"Données de test: {len(X_test)} échantillons")
         
         # ============= 4. NORMALISATION DES FEATURES =============
         # Normaliser les features pour avoir une moyenne de 0 et un écart-type de 1
@@ -215,7 +215,7 @@ class AirQualityPredictor:
         X_test_scaled = self.scaler.transform(X_test)  # Transform test avec le scaler du train
         
         # ============= 5. ENTRAÎNEMENT DU MODÈLE RANDOM FOREST =============
-        logger.info("🌳 Entraînement Random Forest...")
+        logger.info("Entraînement Random Forest...")
         self.model = RandomForestRegressor(
             n_estimators=100,  # Nombre d'arbres dans la forêt
             max_depth=15,  # Profondeur maximale des arbres
@@ -246,7 +246,7 @@ class AirQualityPredictor:
         
         # ============= 7. AFFICHAGE DES RÉSULTATS =============
         logger.info("\n" + "="*50)
-        logger.info("📈 RÉSULTATS DE L'ENTRAÎNEMENT")
+        logger.info("RÉSULTATS DE L'ENTRAÎNEMENT")
         logger.info("="*50)
         logger.info(f"Train RMSE: {metrics['train']['rmse']:.2f}")
         logger.info(f"Train MAE:  {metrics['train']['mae']:.2f}")
@@ -263,7 +263,7 @@ class AirQualityPredictor:
             'feature': self.feature_names,
             'importance': self.model.feature_importances_
         }).sort_values('importance', ascending=False)
-        logger.info("🔍 Importance des features:")
+        logger.info("Importance des features:")
         for idx, row in feature_importance.head(5).iterrows():
             logger.info(f"  {row['feature']}: {row['importance']:.3f}")
         
@@ -282,13 +282,13 @@ class AirQualityPredictor:
             list: Liste de prédictions avec timestamps
         """
         if self.model is None:
-            logger.warning("⚠ Modèle non chargé. Tentative de chargement...")
+            logger.warning("Modèle non chargé. Tentative de chargement...")
             if not self.load_model():
-                logger.error("✗ Modèle non disponible. Retour aux valeurs simulées.")
+                logger.error("Modèle non disponible. Retour aux valeurs simulées.")
                 return self._generate_fallback_predictions(current_data, hours_ahead)
         
         try:
-            logger.info(f"🔮 Prédiction pour les {hours_ahead} prochaines heures...")
+            logger.info(f"Prédiction pour les {hours_ahead} prochaines heures...")
             predictions = []
             current_time = datetime.now()
             current_aqi = float(current_data.get('air_quality_ppm', 100))
@@ -327,7 +327,7 @@ class AirQualityPredictor:
                         'confidence': 0.85
                     })
                 except Exception as hour_err:
-                    logger.warning(f"⚠ Erreur prédiction heure {hour}: {hour_err}")
+                    logger.warning(f"Erreur prédiction heure {hour}: {hour_err}")
                     # Fallback pour cette heure
                     pred_time = current_time + timedelta(hours=hour)
                     predictions.append({
@@ -340,12 +340,12 @@ class AirQualityPredictor:
             logger.info(f"✓ {len(predictions)} prédictions générées")
             return predictions
         except Exception as e:
-            logger.error(f"✗ Erreur prédiction globale: {e}")
+            logger.error(f"Erreur prédiction globale: {e}")
             return self._generate_fallback_predictions(current_data, hours_ahead)
     
     def _generate_fallback_predictions(self, current_data, hours_ahead):
         """Génère des prédictions de fallback quand le modèle n'est pas disponible (Raspberry Pi)."""
-        logger.info(f"📊 Génération de prédictions de fallback pour {hours_ahead} heures...")
+        logger.info(f"Génération de prédictions de fallback pour {hours_ahead} heures...")
         predictions = []
         current_time = datetime.now()
         current_aqi = float(current_data.get('air_quality_ppm', 80))
@@ -386,9 +386,9 @@ class AirQualityPredictor:
                     'message': f"Pic de pollution prévu: {pred['predicted_aqi']:.0f} PPM"
                 })
         if alerts:
-            logger.warning(f"⚠️ {len(alerts)} pic(s) de pollution détecté(s)")
+            logger.warning(f"{len(alerts)} pic(s) de pollution détecté(s)")
         else:
-            logger.info("✓ Aucun pic de pollution prévu")
+            logger.info("Aucun pic de pollution prévu")
         return alerts
     def generate_recommendations(self, current_aqi, predicted_peaks):
         """
@@ -429,7 +429,7 @@ class AirQualityPredictor:
                     f"{time_str} - Pic prévu: {peak['predicted_aqi']:.0f} PPM"
                 )
             recommendations['actions'].append(
-                f"⚠️ {len(predicted_peaks)} pic(s) de pollution prévu(s) dans les prochaines heures"
+                f"{len(predicted_peaks)} pic(s) de pollution prévu(s) dans les prochaines heures"
             )
         return recommendations
     def save_model(self):
@@ -437,22 +437,22 @@ class AirQualityPredictor:
         try:
             joblib.dump(self.model, self.model_path)
             joblib.dump(self.scaler, self.scaler_path)
-            logger.info(f"✓ Modèle sauvegardé: {self.model_path}")
+            logger.info(f"Modèle sauvegardé: {self.model_path}")
         except Exception as e:
-            logger.error(f"✗ Erreur sauvegarde modèle: {e}")
+            logger.error(f"Erreur sauvegarde modèle: {e}")
     def load_model(self):
         """Charge le modèle et le scaler depuis le disque"""
         try:
             if os.path.exists(self.model_path) and os.path.exists(self.scaler_path):
                 self.model = joblib.load(self.model_path)
                 self.scaler = joblib.load(self.scaler_path)
-                logger.info(f"✓ Modèle chargé: {self.model_path}")
+                logger.info(f"Modèle chargé: {self.model_path}")
                 return True
             else:
-                logger.warning("⚠ Fichiers de modèle non trouvés")
+                logger.warning("Fichiers de modèle non trouvés")
                 return False
         except Exception as e:
-            logger.error(f"✗ Erreur chargement modèle: {e}")
+            logger.error(f"Erreur chargement modèle: {e}")
             return False
 def generate_synthetic_training_data(num_samples=1000):
     """
@@ -463,7 +463,7 @@ def generate_synthetic_training_data(num_samples=1000):
     Returns:
         DataFrame: Données synthétiques
     """
-    logger.info(f"🔧 Génération de {num_samples} échantillons synthétiques...")
+    logger.info(f"Génération de {num_samples} échantillons synthétiques...")
     np.random.seed(42)
     # Générer des timestamps (derniers 30 jours)
     end_time = datetime.now()
@@ -494,7 +494,7 @@ def generate_synthetic_training_data(num_samples=1000):
         data['temperature'].append(round(temp, 1))
         data['humidity'].append(round(humidity, 1))
     df = pd.DataFrame(data)
-    logger.info(f"✓ {len(df)} échantillons synthétiques générés")
+    logger.info(f"{len(df)} échantillons synthétiques générés")
     return df
 # Test du module si exécuté directement
 if __name__ == "__main__":

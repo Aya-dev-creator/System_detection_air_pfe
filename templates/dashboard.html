@@ -39,7 +39,7 @@
 {% block content %}
 <header class="header">
     <div class="header-left">
-        <h2 class="page-title">🏠 Tableau de bord</h2>
+        <h2 class="page-title">Tableau de bord</h2>
         <p class="page-subtitle">Surveillance environnementale en temps réel — {{ now_str }}</p>
     </div>
     <div class="header-right">
@@ -52,8 +52,14 @@
     <div class="card weather-card">
         <div class="weather-header">
             <div class="location-info">
-                <h3>📍 {{ weather.city if weather and weather.city else 'Casablanca' }}</h3>
+                <h3 id="weather-city">{{ weather.city if weather and weather.city else (client_geo.city if client_geo else 'Casablanca') }}</h3>
                 <p>{{ weather.description|capitalize if weather and weather.description else 'Météo' }}</p>
+                {% if client_geo %}
+                <p style="font-size:0.72rem;color:var(--text-muted);margin-top:0.2rem;">
+                    <i class="fas fa-location-dot" style="color:#a78bfa;"></i>
+                    Votre position : {{ client_geo.city }}{% if client_geo.country %}, {{ client_geo.country }}{% endif %}
+                </p>
+                {% endif %}
             </div>
             <div class="weather-icon">
                 {% if weather and weather.icon %}
@@ -113,7 +119,7 @@
     </div>
 
     <div class="card overview-card">
-        <h3 class="card-title">📊 Lectures capteurs locaux</h3>
+        <h3 class="card-title">Lectures capteurs locaux</h3>
         <div class="metrics-grid">
             <div class="metric">
                 <div class="metric-icon" style="background: linear-gradient(135deg, #f472b6, #fbcfe8);">
@@ -147,12 +153,15 @@
                     <i class="fas fa-location-crosshairs"></i>
                 </div>
                 <div class="metric-info">
-                    <p class="metric-label">Coordonnées</p>
+                    <p class="metric-label">Votre localisation</p>
                     <p class="metric-value" style="font-size:0.95rem;">
-                        {% if sensor and sensor.latitude is not none and sensor.longitude is not none %}
+                        {% if client_geo %}
+                        {{ '%.4f'|format(client_geo.lat) }}, {{ '%.4f'|format(client_geo.lon) }}
+                        <span style="font-size:0.75rem;color:var(--text-muted);display:block;">{{ client_geo.city }}{% if client_geo.region %}, {{ client_geo.region }}{% endif %}</span>
+                        {% elif sensor and sensor.latitude is not none and sensor.longitude is not none %}
                         {{ '%.4f'|format(sensor.latitude|float) }}, {{ '%.4f'|format(sensor.longitude|float) }}
                         {% else %}
-                        33.5731, -7.5898
+                        Capteur local
                         {% endif %}
                     </p>
                 </div>
@@ -161,7 +170,7 @@
     </div>
 
     <div class="card forecast-card">
-        <h3 class="card-title">📅 Prévisions 5 jours</h3>
+        <h3 class="card-title">Prévisions 5 jours</h3>
         <div class="forecast-list">
             {% for f in forecasts %}
             <div class="forecast-item">
@@ -179,11 +188,11 @@
     </div>
 
     <div class="card alerts-card">
-        <h3 class="card-title">🔔 Alertes</h3>
+        <h3 class="card-title">Alertes</h3>
         <div class="alerts-list">
             {% for alert in alerts %}
             <div class="alert-item high" style="border-left: 4px solid #fbbf24;">
-                <span class="alert-icon">⚠️</span>
+                <span class="alert-icon">!</span>
                 <div class="alert-content">
                     <p class="alert-message">{{ alert.message }}</p>
                     <p class="alert-time">{{ alert.created_at }}</p>
@@ -191,7 +200,7 @@
             </div>
             {% else %}
             <div class="alert-item medium" style="border-left: 4px solid #fbbf24;">
-                <span class="alert-icon">⚠️</span>
+                <span class="alert-icon">!</span>
                 <div class="alert-content">
                     <p class="alert-message">Qualité de l'air modérée détectée</p>
                     <p class="alert-time">{{ now_str }}</p>
@@ -202,7 +211,7 @@
     </div>
 
     <div class="card stats-card">
-        <h3 class="card-title">📊 Stats 24h</h3>
+        <h3 class="card-title">Stats 24h</h3>
         <div class="stats-grid">
             <div class="stat-item">
                 <p class="stat-label">Minimum</p>

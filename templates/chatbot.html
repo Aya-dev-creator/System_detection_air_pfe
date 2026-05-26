@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% block title %}Assistant IA — AirWatch{% endblock %}
+
+{% block extra_css %}
+<style>
+    .chat-layout-wrap {
+        padding: var(--spacing-lg);
+        max-width: 1000px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 120px);
+    }
+
+    .chat-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--bg-tertiary);
+        border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-lg);
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        overflow: hidden;
+    }
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: var(--spacing-lg);
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
+        scroll-behavior: smooth;
+    }
+
+    .message-group {
+        display: flex;
+        width: 100%;
+        gap: var(--spacing-md);
+        align-items: flex-start;
+    }
+
+    .message-group.user {
+        flex-direction: row-reverse;
+    }
+
+    .avatar-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--radius-md);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.15rem;
+        color: #ffffff;
+        flex-shrink: 0;
+    }
+
+    .message-group.user .avatar-icon {
+        background: linear-gradient(135deg, #f472b6, #fb7185);
+        box-shadow: 0 4px 12px rgba(244, 114, 182, 0.2);
+    }
+
+    .message-group.assistant .avatar-icon {
+        background: var(--sidebar-logo-icon-gradient);
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+    }
+
+    .message-bubble {
+        max-width: 75%;
+        padding: var(--spacing-md);
+        border-radius: var(--radius-lg);
+        line-height: 1.55;
+        font-size: 0.95rem;
+        box-shadow: var(--shadow-sm);
+        position: relative;
+    }
+
+    .message-group.user .message-bubble {
+        background: var(--sidebar-nav-active-gradient);
+        color: #ffffff;
+        border-top-right-radius: 0;
+    }
+
+    .message-group.assistant .message-bubble {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border-top-left-radius: 0;
+        border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Structured HTML content rendering inside Assistant bubbles */
+    .message-bubble h3 {
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin-top: 0.75rem;
+        margin-bottom: 0.35rem;
+        color: var(--accent-primary);
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    
+    body[data-theme="light"] .message-bubble h3 {
+        color: var(--accent-secondary);
+    }
+
+    .message-bubble h3:first-of-type {
+        margin-top: 0;
+    }
+
+    .message-bubble p {
+        margin-bottom: 0.65rem;
+    }
+
+    .message-bubble p:last-of-type {
+        margin-bottom: 0;
+    }
+
+    .message-bubble ul {
+        margin-left: 1.25rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .message-bubble li {
+        margin-bottom: 0.35rem;
+    }
+
+    .message-bubble strong {
+        color: #ffffff;
+    }
+
+    body[data-theme="light"] .message-group.assistant .message-bubble strong {
+        color: #111827;
+    }
+
+    .message-time {
+        font-size: 0.7rem;
+        color: rgba(255, 255, 255, 0.6);
+        margin-top: 0.35rem;
+        display: block;
+        text-align: right;
+    }
+
+    .message-group.assistant .message-time {
+        color: var(--text-muted);
+    }
+
+    .chat-controls-area {
+        padding: var(--spacing-lg);
+        background: rgba(30, 41, 59, 0.4);
+        border-top: 1px solid var(--bg-tertiary);
+    }
+
+    body[data-theme="light"] .chat-controls-area {
+        background: rgba(243, 244, 246, 0.6);
+    }
+
+    .quick-replies {
+        display: flex;
+        gap: var(--spacing-sm);
+        flex-wrap: wrap;
+        margin-bottom: var(--spacing-md);
+    }
+
+    .btn-quick {
+        padding: 0.5rem 0.875rem;
+        background: var(--bg-tertiary);
+        border: 1px solid transparent;
+        color: var(--text-secondary);
+        border-radius: 999px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .btn-quick:hover {
+        background: rgba(148, 163, 184, 0.15);
+        color: var(--text-primary);
+        border-color: var(--text-muted);
+    }
+
+    .btn-quick.reset-btn {
+        background: rgba(239, 68, 68, 0.1);
+        color: #f87171;
+        margin-left: auto;
+    }
+
+    .btn-quick.reset-btn:hover {
+        background: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+
+    .chat-input-row {
+        display: flex;
+        gap: var(--spacing-md);
+    }
+
+    .chat-input-row input {
+        flex: 1;
+        background: var(--bg-tertiary);
+        border: 1px solid transparent;
+        border-radius: var(--radius-lg);
+        padding: var(--spacing-md);
+        color: var(--text-primary);
+        font-size: 0.95rem;
+        transition: all 0.3s ease;
+    }
+
+    .chat-input-row input:focus {
+        outline: none;
+        border-color: var(--accent-primary);
+        box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+    }
+
+    .btn-send {
+        background: var(--sidebar-nav-active-gradient);
+        border: none;
+        color: #ffffff;
+        padding: 0 var(--spacing-xl);
+        border-radius: var(--radius-lg);
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-sm);
+        transition: all 0.2s ease;
+        box-shadow: var(--sidebar-active-shadow);
+    }
+
+    .btn-send:hover {
+        transform: translateY(-1px);
+        opacity: 0.95;
+    }
+
+    .btn-send:active {
+        transform: translateY(0);
+    }
+
+    @media (max-width: 768px) {
+        .chat-layout-wrap {
+            height: calc(100vh - 100px);
+            padding: var(--spacing-md);
+        }
+        
+        .message-bubble {
+            max-width: 85%;
+        }
+
+        .btn-quick.reset-btn {
+            margin-left: 0;
+            width: 100%;
+            text-align: center;
+        }
+
+        .btn-send {
+            padding: 0 var(--spacing-md);
+        }
+        
+        .btn-send span.btn-text {
+            display: none;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="header">
+    <div class="header-left">
+        <h2 class="page-title">Assistant Météo IA</h2>
+        <p class="page-subtitle">Discutez en temps réel avec notre intelligence artificielle (Sans JavaScript)</p>
+    </div>
+    <div class="header-right">
+        <span class="status-pill"><span class="dot" aria-hidden="true"></span> Mistral AI</span>
+    </div>
+</header>
+
+<div class="chat-layout-wrap">
+    <div class="chat-card">
+        <!-- Messages Area -->
+        <div class="chat-messages">
+            {% for msg in chat_history %}
+                <div class="message-group {{ 'user' if msg.role == 'user' else 'assistant' }}">
+                    <div class="avatar-icon" aria-hidden="true">
+                        {% if msg.role == 'user' %}
+                            <i class="fas fa-user"></i>
+                        {% else %}
+                            <i class="fas fa-robot"></i>
+                        {% endif %}
+                    </div>
+                    <div class="message-bubble">
+                        <div class="message-text">
+                            {% if msg.role == 'user' %}
+                                {{ msg.content }}
+                            {% else %}
+                                {{ msg.content|safe }}
+                            {% endif %}
+                        </div>
+                        <span class="message-time">{{ msg.timestamp }}</span>
+                    </div>
+                </div>
+            {% endfor %}
+            <!-- HTML target anchor for auto-scroll on form reload -->
+            <div id="bottom"></div>
+        </div>
+
+        <!-- Controls & Input Area -->
+        <div class="chat-controls-area">
+            <form method="POST" action="{{ url_for('chatbot') }}#bottom" class="chat-submit-form">
+                <!-- Quick Prompts Buttons -->
+                <div class="quick-replies">
+                    <button type="submit" name="quick_action" value="Que dois-je porter aujourd'hui ?" class="btn-quick">👕 Quoi porter ?</button>
+                    <button type="submit" name="quick_action" value="Est-il sûr de faire du sport dehors ?" class="btn-quick">🏃 Sport dehors ?</button>
+                    <button type="submit" name="quick_action" value="Donne-moi des conseils généraux de santé liés à l'air" class="btn-quick">💡 Conseils santé</button>
+                    <button type="submit" name="action" value="reset" class="btn-quick reset-btn">🔄 Réinitialiser</button>
+                </div>
+
+                <!-- Text Input row -->
+                <div class="chat-input-row">
+                    <input 
+                        type="text" 
+                        name="user_input" 
+                        placeholder="Posez votre question sur la météo ou la qualité de l'air..." 
+                        autocomplete="off"
+                        required
+                        autofocus
+                    >
+                    <button type="submit" class="btn-send">
+                        <span class="btn-text">Envoyer</span>
+                        <span class="btn-icon"><i class="fas fa-paper-plane"></i></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

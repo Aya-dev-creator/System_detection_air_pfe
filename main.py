@@ -47,7 +47,7 @@ except ImportError:
     WEB_SERVER_AVAILABLE = False  # Flag indiquant que le serveur web n'est pas disponible
     WEATHER_API_AVAILABLE = False
     logger = logging.getLogger(__name__)
-    logger.warning("⚠ Module web_server non disponible - Interface web désactivée")
+    logger.warning("Module web_server non disponible - Interface web désactivée")
 
 # ============= CONFIGURATION DU LOGGING =============
 # Le logging permet de suivre ce que fait le système et de détecter les erreurs
@@ -99,7 +99,7 @@ class AirQualitySystem:
         """
         logger.info("DÉMARRAGE DU SYSTÈME DE SURVEILLANCE DE QUALITÉ DE L'AIR")
         if not HARDWARE_AVAILABLE:
-            logger.warning("⚠ Raspberry Pi sensor hardware unavailable. Sensor readings will run in fallback mode.")
+            logger.warning("Raspberry Pi sensor hardware unavailable. Sensor readings will run in fallback mode.")
         
         # ============= VARIABLES DE CONTRÔLE =============
         self.running = False  # Flag indiquant si le système est en cours d'exécution
@@ -130,7 +130,7 @@ class AirQualitySystem:
                 dht11_pin=config.SENSOR_CONFIG['dht11_pin'],  # Broche GPIO pour DHT11
                 gps_enabled=config.SENSOR_CONFIG['gps_enabled']  # Activation/désactivation GPS
             )
-            logger.info("✓ Capteurs initialisés")
+            logger.info("Capteurs initialisés")
             
             # ---------- 3. MODÈLE MACHINE LEARNING ----------
             # Le modèle ML utilise RandomForest pour prédire la qualité de l'air
