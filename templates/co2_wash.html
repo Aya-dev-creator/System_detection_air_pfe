@@ -1,0 +1,139 @@
+{% extends "entreprise_base.html" %}
+{% block title %}CO2 Wash Dashboard — AirWatch B2B{% endblock %}
+
+{% block extra_css %}
+<style>
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: var(--spacing-md);
+        margin-bottom: var(--spacing-lg);
+    }
+    .kpi-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--bg-tertiary);
+        border-radius: var(--radius-lg);
+        padding: var(--spacing-lg);
+        display: flex;
+        flex-direction: column;
+        box-shadow: var(--shadow-md);
+    }
+    .kpi-title {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }
+    .kpi-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+    .kpi-unit {
+        font-size: 1rem;
+        color: var(--text-secondary);
+        font-weight: 500;
+    }
+    .kpi-card.highlight {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.2));
+        border-color: rgba(16, 185, 129, 0.3);
+    }
+    .kpi-card.highlight .kpi-value {
+        color: #10b981;
+    }
+    .system-status {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 1rem;
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        border-radius: var(--radius-md);
+        color: #10b981;
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+    }
+    .status-dot {
+        width: 12px;
+        height: 12px;
+        background: #10b981;
+        border-radius: 50%;
+        box-shadow: 0 0 10px #10b981;
+    }
+    .eco-impact {
+        background: var(--bg-secondary);
+        border: 1px solid var(--bg-tertiary);
+        border-radius: var(--radius-lg);
+        padding: var(--spacing-lg);
+        margin-top: var(--spacing-lg);
+        display: flex;
+        align-items: center;
+        gap: 2rem;
+    }
+    .eco-icon {
+        font-size: 4rem;
+        color: #10b981;
+    }
+    .eco-text h3 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.5rem;
+    }
+    .eco-text p {
+        color: var(--text-secondary);
+        margin: 0;
+        line-height: 1.5;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="header">
+    <div class="header-left">
+        <h2 class="page-title">Supervision CO2 Wash</h2>
+        <p class="page-subtitle">Données réelles des émissions et performances de filtration</p>
+    </div>
+</header>
+
+<div style="padding: var(--spacing-lg);">
+    <div class="system-status">
+        <div class="status-dot"></div>
+        État du système : {{ stats.status }}
+    </div>
+
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-title">Émissions Brutes (Source)</div>
+            <div class="kpi-value" style="color: #f87171;">{{ stats.gross }} <span class="kpi-unit">kg/h</span></div>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto;">Source : API Carbon Interface</p>
+        </div>
+        
+        <div class="kpi-card highlight">
+            <div class="kpi-title">Volume Capturé</div>
+            <div class="kpi-value">{{ stats.captured }} <span class="kpi-unit">kg/h</span></div>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto;">Séquestré par le CO2 Wash</p>
+        </div>
+        
+        <div class="kpi-card">
+            <div class="kpi-title">Efficacité du Filtre</div>
+            <div class="kpi-value" style="color: #60a5fa;">{{ stats.efficiency }} <span class="kpi-unit">%</span></div>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto;">Rendement actuel d'absorption</p>
+        </div>
+
+        <div class="kpi-card">
+            <div class="kpi-title">Émissions Nettes (Rejetées)</div>
+            <div class="kpi-value" style="color: #fbbf24;">{{ stats.net }} <span class="kpi-unit">kg/h</span></div>
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto;">Relâchées dans l'atmosphère</p>
+        </div>
+    </div>
+
+    <div class="eco-impact">
+        <div class="eco-icon"><i class="fas fa-tree"></i></div>
+        <div class="eco-text">
+            <h3>Équivalent Écologique</h3>
+            <p>Le volume de CO2 que votre installation vient de capturer équivaut au travail d'absorption d'environ <strong>{{ stats.trees }} arbres</strong> adultes sur une journée complète.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}

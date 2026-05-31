@@ -118,57 +118,6 @@
         <p class="aqi-label-status" style="text-align:center;margin-top:0.75rem;">{{ aqi.level if aqi else '—' }}</p>
     </div>
 
-    <div class="card overview-card">
-        <h3 class="card-title">Lectures capteurs locaux</h3>
-        <div class="metrics-grid">
-            <div class="metric">
-                <div class="metric-icon" style="background: linear-gradient(135deg, #f472b6, #fbcfe8);">
-                    <i class="fas fa-temperature-half"></i>
-                </div>
-                <div class="metric-info">
-                    <p class="metric-label">Température</p>
-                    <p class="metric-value">{{ '%.1f'|format(sensor.temperature) if sensor and sensor.temperature is not none else '—' }}°C</p>
-                </div>
-            </div>
-            <div class="metric">
-                <div class="metric-icon" style="background: linear-gradient(120deg, #60a5fa, #93c5fd);">
-                    <i class="fas fa-droplet"></i>
-                </div>
-                <div class="metric-info">
-                    <p class="metric-label">Humidité</p>
-                    <p class="metric-value">{{ '%.1f'|format(sensor.humidity) if sensor and sensor.humidity is not none else '—' }}%</p>
-                </div>
-            </div>
-            <div class="metric">
-                <div class="metric-icon" style="background: linear-gradient(to right, #34d399, #6ee7b7);">
-                    <i class="fas fa-lungs"></i>
-                </div>
-                <div class="metric-info">
-                    <p class="metric-label">Qualité de l'air</p>
-                    <p class="metric-value">{{ '%.1f'|format(sensor.air_quality_ppm) if sensor and sensor.air_quality_ppm is not none else '—' }} PPM</p>
-                </div>
-            </div>
-            <div class="metric">
-                <div class="metric-icon" style="background: linear-gradient(120deg, #fb923c, #fdba74);">
-                    <i class="fas fa-location-crosshairs"></i>
-                </div>
-                <div class="metric-info">
-                    <p class="metric-label">Votre localisation</p>
-                    <p class="metric-value" style="font-size:0.95rem;">
-                        {% if client_geo %}
-                        {{ '%.4f'|format(client_geo.lat) }}, {{ '%.4f'|format(client_geo.lon) }}
-                        <span style="font-size:0.75rem;color:var(--text-muted);display:block;">{{ client_geo.city }}{% if client_geo.region %}, {{ client_geo.region }}{% endif %}</span>
-                        {% elif sensor and sensor.latitude is not none and sensor.longitude is not none %}
-                        {{ '%.4f'|format(sensor.latitude|float) }}, {{ '%.4f'|format(sensor.longitude|float) }}
-                        {% else %}
-                        Capteur local
-                        {% endif %}
-                    </p>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="card forecast-card">
         <h3 class="card-title">Prévisions 5 jours</h3>
         <div class="forecast-list">

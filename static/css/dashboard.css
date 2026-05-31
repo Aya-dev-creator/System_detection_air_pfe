@@ -61,6 +61,9 @@
     --sidebar-divider: rgba(148, 163, 184, 0.12);
     --sidebar-active-shadow: 0 8px 20px rgba(59, 130, 246, 0.35);
     --sidebar-toggle-track: #334155;
+    --menu-overlay: rgba(0, 0, 0, 0.55);
+    --table-row-stripe: rgba(255, 255, 255, 0.03);
+    --link-accent: #a78bfa;
 }
 
 /* Thème clair : surcharge les variables quand data-theme="light" */
@@ -84,6 +87,14 @@ body[data-theme="light"] {
     --sidebar-divider: rgba(15, 23, 42, 0.08);
     --sidebar-active-shadow: 0 8px 20px rgba(37, 99, 235, 0.2);
     --sidebar-toggle-track: #e2e8f0;
+    --menu-overlay: rgba(15, 23, 42, 0.35);
+    --table-row-stripe: rgba(15, 23, 42, 0.04);
+    --link-accent: #6366f1;
+
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
     
     --success: #16A34A;
     --warning: #D97706;
@@ -416,6 +427,37 @@ body[data-theme="light"] .theme-toggle:hover {
 .mobile-header-title {
     font-weight: 600;
     font-size: 1rem;
+    flex: 1;
+    text-align: center;
+}
+
+.mobile-theme-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+    text-decoration: none;
+    transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+    flex-shrink: 0;
+}
+
+.mobile-theme-btn:hover {
+    background: var(--accent-primary);
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+.mobile-theme-btn i {
+    font-size: 1.1rem;
+}
+
+/* Tables (analytics, etc.) */
+.data-table tbody tr:nth-child(odd) {
+    background: var(--table-row-stripe);
 }
 
 /* Header */

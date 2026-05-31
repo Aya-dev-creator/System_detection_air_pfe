@@ -3,21 +3,61 @@
 
 {% block extra_css %}
 <style>
-    .map-wrap { padding: var(--spacing-xl); }
-    .legend {
-        display: flex; flex-wrap: wrap; gap: 0.75rem 1.25rem; align-items: center;
-        background: var(--bg-secondary); border: 1px solid var(--bg-tertiary);
-        border-radius: var(--radius-lg); padding: var(--spacing-md) var(--spacing-lg);
-        margin-bottom: var(--spacing-lg); font-size: 0.8rem; color: var(--text-secondary);
+    .map-page {
+        display: flex;
+        flex-direction: column;
+        min-height: calc(100vh - 1px);
     }
-    .legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
-    .dot-lg { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .map-wrap {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: var(--spacing-md);
+        padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-xl);
+        min-height: 0;
+    }
     .map-frame {
-        border-radius: var(--radius-xl); overflow: hidden; border: 1px solid var(--bg-tertiary);
-        background: #0f172a; min-height: 420px;
+        flex: 1 1 auto;
+        width: 100%;
+        min-height: 420px;
+        height: calc(100vh - 340px);
+        border-radius: var(--radius-xl);
+        overflow: hidden;
+        border: 1px solid var(--bg-tertiary);
+        background: var(--bg-tertiary);
     }
-    .map-frame iframe { display: block; width: 100%; height: 450px; border: 0; }
-    .station-title { margin: var(--spacing-xl) 0 var(--spacing-md); font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .map-static-link {
+        display: block;
+        width: 100%;
+        height: 100%;
+        text-decoration: none;
+    }
+    .map-static-img {
+        display: block;
+        width: 100%;
+        height: 100%;
+        min-height: 420px;
+        object-fit: cover;
+        object-position: center;
+    }
+    .map-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--spacing-md);
+        flex-shrink: 0;
+    }
+    .map-open-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--link-accent);
+        text-decoration: none;
+    }
+    .map-open-link:hover { text-decoration: underline; }
+    .station-title { margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+    .map-station-block { flex-shrink: 0; }
     .station-row {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -30,18 +70,21 @@
     .station-card .lbl { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
     .station-card .val { font-weight: 700; margin-top: 0.25rem; font-size: 0.95rem; }
     .map-empty { text-align: center; padding: 3rem; background: var(--bg-secondary); border-radius: var(--radius-xl); border: 1px dashed var(--bg-tertiary); }
-    .map-dual { margin-top: var(--spacing-md); padding: var(--spacing-md) var(--spacing-lg); background: var(--bg-secondary); border: 1px solid var(--bg-tertiary); border-radius: var(--radius-lg); font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; }
-    .map-dual strong { color: var(--text-primary); }
-    .map-dual a { color: #a78bfa; }
-    .map-warn { margin-top: var(--spacing-sm); padding: 0.65rem 0.85rem; background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.35); border-radius: var(--radius-md); font-size: 0.8rem; color: #fbbf24; }
+    @media (max-width: 768px) {
+        .map-frame {
+            height: calc(100vh - 400px);
+            min-height: 300px;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+<div class="map-page">
 <header class="header">
     <div class="header-left">
         <h2 class="page-title">Carte de pollution</h2>
-        <p class="page-subtitle">Localisation des capteurs et niveaux de qualité de l'air en temps réel</p>
+        <p class="page-subtitle">Position et niveaux de qualité de l'air en temps réel</p>
     </div>
     <div class="header-right">
         <span class="status-pill"><span class="dot" aria-hidden="true"></span> En ligne</span>
@@ -49,40 +92,24 @@
 </header>
 
 <div class="map-wrap">
-    <p class="legend" aria-label="Légende IQA">
-        <strong style="color:var(--text-primary);margin-right:0.5rem;">Légende — Niveaux IQA</strong>
-        <span><span class="dot-lg" style="background:#00e400;"></span> Bon (0–50)</span>
-        <span><span class="dot-lg" style="background:#ffff00;"></span> Modéré (51–100)</span>
-        <span><span class="dot-lg" style="background:#ff7e00;"></span> Mauvais GS (101–150)</span>
-        <span><span class="dot-lg" style="background:#ff0000;"></span> Mauvais (151–200)</span>
-        <span><span class="dot-lg" style="background:#8f3f97;"></span> Très mauvais (201–300)</span>
-        <span><span class="dot-lg" style="background:#7e0023;"></span> Dangereux (&gt;300)</span>
-    </p>
-
     {% if locations and locations|length > 0 and map_info %}
     <div class="map-frame">
-        <iframe title="Carte OpenStreetMap"
-            src="https://www.openstreetmap.org/export/embed.html?bbox={{ map_info.lon - 0.02 }}%2C{{ map_info.lat - 0.02 }}%2C{{ map_info.lon + 0.02 }}%2C{{ map_info.lat + 0.02 }}&amp;layer=mapnik&amp;mlat={{ map_info.lat }}&amp;mlon={{ map_info.lon }}">
-        </iframe>
+        <a class="map-static-link" href="{{ map_info.osm_url }}" target="_blank" rel="noopener noreferrer"
+           title="Ouvrir la carte interactive (zoom) sur OpenStreetMap">
+            <img class="map-static-img"
+                 src="{{ url_for('map_static_image', lat=map_info.lat, lon=map_info.lon) }}"
+                 width="1920" height="960"
+                 alt="Carte de la zone surveillée">
+        </a>
+    </div>
+    <div class="map-actions">
+        <a class="map-open-link" href="{{ map_info.osm_url }}" target="_blank" rel="noopener noreferrer">
+            <i class="fas fa-up-right-from-square" aria-hidden="true"></i>
+            Carte interactive (zoom) sur OpenStreetMap
+        </a>
     </div>
 
-    {% if map_extra %}
-    <div class="map-dual">
-        <strong>{{ map_extra.city_name }}</strong> (météo / référence carte) : {{ '%.4f'|format(map_extra.ref_lat) }}, {{ '%.4f'|format(map_extra.ref_lon) }}
-        — <a href="https://www.openstreetmap.org/?mlat={{ map_extra.ref_lat }}&mlon={{ map_extra.ref_lon }}#map=14/{{ map_extra.ref_lat }}/{{ map_extra.ref_lon }}" target="_blank" rel="noopener noreferrer">Ouvrir dans OSM</a>
-        {% if map_extra.sensor_lat is not none and map_extra.sensor_lon is not none %}
-        <br><strong>Capteur GPS</strong> : {{ '%.4f'|format(map_extra.sensor_lat) }}, {{ '%.4f'|format(map_extra.sensor_lon) }}
-        — <a href="https://www.openstreetmap.org/?mlat={{ map_extra.sensor_lat }}&mlon={{ map_extra.sensor_lon }}#map=14/{{ map_extra.sensor_lat }}/{{ map_extra.sensor_lon }}" target="_blank" rel="noopener noreferrer">Ouvrir dans OSM</a>
-        {% if map_extra.sensor_distance_km is not none %}
-        <span style="color:var(--text-muted);"> (≈ {{ map_extra.sensor_distance_km }} km du centre météo)</span>
-        {% endif %}
-        {% endif %}
-    </div>
-    {% if map_extra.gps_ignored %}
-    <p class="map-warn">Le GPS capteur est très loin de la ville météo : la carte reste centrée sur <strong>{{ map_extra.city_name }}</strong>. Pour forcer le GPS, mettez <code>MAP_FOLLOW_GPS=true</code> dans le fichier <code>.env</code>.</p>
-    {% endif %}
-    {% endif %}
-
+    <div class="map-station-block">
     <h3 class="station-title">Station active</h3>
     <div class="station-row">
         <div class="station-card"><div class="lbl">Latitude</div><div class="val">{{ '%.4f'|format(map_info.lat) }}</div></div>
@@ -92,12 +119,14 @@
         <div class="station-card"><div class="lbl">Température</div><div class="val">{{ map_info.temp }}°C</div></div>
         <div class="station-card"><div class="lbl">Humidité</div><div class="val">{{ map_info.humidity }}%</div></div>
     </div>
+    </div>
     {% else %}
     <div class="map-empty">
         <i class="fas fa-map-location-dot" style="font-size:3rem;color:var(--text-muted);margin-bottom:1rem;"></i>
         <h3>Aucune position disponible</h3>
-        <p style="color:var(--text-secondary);">Enregistrez des lectures GPS pour afficher la carte.</p>
+        <p style="color:var(--text-secondary);">Les données de localisation seront affichées dès qu'une mesure est enregistrée.</p>
     </div>
     {% endif %}
+</div>
 </div>
 {% endblock %}

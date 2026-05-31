@@ -52,6 +52,16 @@ Consignes obligatoires de formatage et de style :
    - <ul>...</ul> et <li>...</li> pour les listes à puces.
 5. Ne mettez AUCUN bloc de code Markdown ou enveloppe de code comme ```html ou ```. Retournez directement le HTML brut.
 6. Restez focalisé sur la météo, la qualité de l'air, la santé et les conseils associés. Ne proposez rien qui sorte de ce cadre."""
+
+        # System prompt for the enterprise chatbot
+        self.enterprise_system_prompt = """Vous êtes l'assistant IA industriel et environnemental d'AirWatch Entreprise.
+Votre rôle est d'analyser les émissions de CO2 des usines industrielles, d'évaluer l'efficacité des systèmes de lavage de CO2 (CO2 Wash) et de proposer des solutions d'optimisation énergétique pour réduire l'empreinte carbone.
+
+Consignes obligatoires de formatage et de style :
+1. Répondez TOUJOURS en français dans un ton professionnel, analytique et orienté solution B2B.
+2. Formatez DIRECTEMENT en HTML brut (sans bloc markdown ```html). Utilisez <p>, <strong>, <br>, <h3>, <ul>, <li>.
+3. Résumez les émissions de manière claire, et proposez toujours 2 ou 3 pistes d'optimisation technique.
+4. Restez concentré sur l'industrie, le CO2, l'efficacité énergétique et la qualité de l'air industriel."""
         
         self.conversation_history = []
     
@@ -59,7 +69,7 @@ Consignes obligatoires de formatage et de style :
         """Reset the conversation history"""
         self.conversation_history = []
     
-    def chat(self, user_message, weather_context=None):
+    def chat(self, user_message, weather_context=None, mode='standard'):
         """
         Send a message to the chatbot and get a response
         
@@ -82,9 +92,12 @@ Consignes obligatoires de formatage et de style :
                 "content": user_message
             })
             
+            # Select appropriate system prompt based on mode
+            active_prompt = self.enterprise_system_prompt if mode == 'enterprise' else self.system_prompt
+            
             # Prepare messages for API (dict format for mistralai 2.x)
             messages = [
-                {"role": "system", "content": self.system_prompt}
+                {"role": "system", "content": active_prompt}
             ]
             
             # Add weather context if available

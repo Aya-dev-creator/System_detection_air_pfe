@@ -1,0 +1,82 @@
+{% extends "entreprise_base.html" %}
+{% block title %}IA Optimisation — AirWatch B2B{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Reuse exactly the same chat styles from the public chatbot */
+    .chat-layout-wrap { padding: var(--spacing-lg); max-width: 1000px; margin: 0 auto; display: flex; flex-direction: column; height: calc(100vh - 120px); }
+    .chat-card { background: var(--bg-secondary); border: 1px solid var(--bg-tertiary); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: var(--spacing-lg); display: flex; flex-direction: column; gap: var(--spacing-md); scroll-behavior: smooth; }
+    .message-group { display: flex; width: 100%; gap: var(--spacing-md); align-items: flex-start; }
+    .message-group.user { flex-direction: row-reverse; }
+    .avatar-icon { width: 40px; height: 40px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 1.15rem; color: #ffffff; flex-shrink: 0; }
+    .message-group.user .avatar-icon { background: linear-gradient(135deg, #f472b6, #fb7185); }
+    .message-group.assistant .avatar-icon { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
+    .message-bubble { max-width: 75%; padding: var(--spacing-md); border-radius: var(--radius-lg); line-height: 1.55; font-size: 0.95rem; box-shadow: var(--shadow-sm); position: relative; }
+    .message-group.user .message-bubble { background: #3b82f6; color: #ffffff; border-top-right-radius: 0; }
+    .message-group.assistant .message-bubble { background: var(--bg-tertiary); color: var(--text-primary); border-top-left-radius: 0; border: 1px solid rgba(255, 255, 255, 0.05); }
+    .message-bubble h3 { font-size: 1.05rem; font-weight: 700; margin-top: 0.75rem; margin-bottom: 0.35rem; color: #60a5fa; display: flex; align-items: center; gap: 0.4rem; }
+    .message-bubble h3:first-of-type { margin-top: 0; }
+    .message-bubble p { margin-bottom: 0.65rem; }
+    .message-bubble p:last-of-type { margin-bottom: 0; }
+    .message-bubble ul { margin-left: 1.25rem; margin-bottom: 0.75rem; }
+    .message-bubble li { margin-bottom: 0.35rem; }
+    .message-bubble strong { color: #ffffff; }
+    .message-time { font-size: 0.7rem; color: rgba(255, 255, 255, 0.6); margin-top: 0.35rem; display: block; text-align: right; }
+    .message-group.assistant .message-time { color: var(--text-muted); }
+    .chat-controls-area { padding: var(--spacing-lg); background: rgba(30, 41, 59, 0.4); border-top: 1px solid var(--bg-tertiary); }
+    .chat-input-row { display: flex; gap: var(--spacing-md); }
+    .chat-input-row input { flex: 1; background: var(--bg-tertiary); border: 1px solid transparent; border-radius: var(--radius-lg); padding: var(--spacing-md); color: var(--text-primary); font-size: 0.95rem; }
+    .chat-input-row input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+    .btn-send { background: #3b82f6; border: none; color: #ffffff; padding: 0 var(--spacing-xl); border-radius: var(--radius-lg); font-size: 0.95rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: var(--spacing-sm); }
+    .btn-send:hover { background: #2563eb; }
+    .quick-replies { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; margin-bottom: var(--spacing-md); }
+    .btn-quick { padding: 0.5rem 0.875rem; background: var(--bg-tertiary); border: 1px solid transparent; color: var(--text-secondary); border-radius: 999px; font-size: 0.8rem; font-weight: 500; cursor: pointer; }
+    .btn-quick:hover { background: rgba(148, 163, 184, 0.15); color: var(--text-primary); border-color: var(--text-muted); }
+    .btn-quick.reset-btn { background: rgba(239, 68, 68, 0.1); color: #f87171; margin-left: auto; }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="header">
+    <div class="header-left">
+        <h2 class="page-title">IA d'Optimisation Industrielle</h2>
+        <p class="page-subtitle">Expertise IA pour réduire l'empreinte carbone</p>
+    </div>
+</header>
+
+<div class="chat-layout-wrap">
+    <div class="chat-card">
+        <div class="chat-messages">
+            {% for msg in chat_history %}
+                <div class="message-group {{ 'user' if msg.role == 'user' else 'assistant' }}">
+                    <div class="avatar-icon" aria-hidden="true">
+                        {% if msg.role == 'user' %}<i class="fas fa-user-tie"></i>{% else %}<i class="fas fa-robot"></i>{% endif %}
+                    </div>
+                    <div class="message-bubble">
+                        <div class="message-text">
+                            {% if msg.role == 'user' %}{{ msg.content }}{% else %}{{ msg.content|safe }}{% endif %}
+                        </div>
+                        <span class="message-time">{{ msg.timestamp }}</span>
+                    </div>
+                </div>
+            {% endfor %}
+            <div id="bottom"></div>
+        </div>
+
+        <div class="chat-controls-area">
+            <form method="POST" action="{{ url_for('entreprise_assistant') }}#bottom" class="chat-submit-form">
+                <div class="quick-replies">
+                    <button type="submit" name="user_input" value="Fais-moi un résumé de mes émissions actuelles et de l'efficacité du lavage." class="btn-quick">📊 Résumé des émissions</button>
+                    <button type="submit" name="user_input" value="Comment puis-je optimiser l'efficacité de ma tour de lavage CO2 ?" class="btn-quick">⚙️ Optimisation du filtre</button>
+                    <button type="submit" name="action" value="reset" class="btn-quick reset-btn">🔄 Réinitialiser</button>
+                </div>
+                <div class="chat-input-row">
+                    <input type="text" name="user_input" placeholder="Demandez un conseil d'ingénierie environnementale..." autocomplete="off" required autofocus>
+                    <button type="submit" class="btn-send"><span class="btn-text">Envoyer</span><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

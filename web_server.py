@@ -4,7 +4,7 @@ VERSION 2.2 - Responsive + Sans Authentification
 Fournit une API REST et une interface web moderne pour visualiser les données en temps réel
 Intègre OpenWeatherMap API pour les données météorologiques
 """
-from flask import Flask, render_template, jsonify, request, session, redirect, url_for
+from flask import Flask, render_template, jsonify, request, session, redirect, url_for, Response
 import logging
 from datetime import datetime, timedelta
 import json
@@ -865,9 +865,9 @@ def index():
     # 1. Données Météo selon la position du visiteur (pas du Raspberry Pi)
     weather = get_weather_data(lat=_client_lat, lon=_client_lon)
 
-    # 2. Dernières données capteurs
+    # 2. Dernière mesure enregistrée (AQI)
     latest_readings = db.get_latest_readings(limit=1)
-    current_sensor = latest_readings[0] if latest_readings else None
+    latest_reading = latest_readings[0] if latest_readings else None
 
     # 3. Statistiques 24h
     stats = db.get_statistics(hours=24)
@@ -880,7 +880,7 @@ def index():
     alerts = db.get_recent_alerts(limit=5)
 
     # 6. Infos de Qualité d'Air
-    aqi_value = current_sensor['air_quality_ppm'] if current_sensor else 0
+    aqi_value = latest_reading['air_quality_ppm'] if latest_reading else 0
     aqi_info = config.get_air_quality_level(aqi_value)
 
     now_str = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
@@ -888,7 +888,6 @@ def index():
         'dashboard.html',
         active_nav='dashboard',
         weather=weather,
-        sensor=current_sensor,
         stats=stats,
         forecasts=forecasts,
         alerts=alerts,
@@ -1036,9 +1035,53 @@ def map_view():
         'level': aqi_row['level'],
         'temp': round(t_val, 1),
         'humidity': round(h_val, 1),
+        'osm_url': (
+            f'https://www.openstreetmap.org/?mlat={map_lat}&mlon={map_lon}'
+            f'#map=13/{map_lat}/{map_lon}'
+        ),
     }
 
     return render_template('map.html', active_nav='map', locations=locations, map_info=map_info, map_extra=map_extra)
+
+
+@app.route('/map/static.png')
+def map_static_image():
+    """Image carte statique (proxy) — affichage pleine largeur sans bug d'iframe."""
+    lat = request.args.get('lat', type=float)
+    lon = request.args.get('lon', type=float)
+    if lat is None or lon is None:
+        return jsonify({'success': False, 'error': 'lat et lon requis'}), 400
+
+    static_url = (
+        'https://staticmap.openstreetmap.de/staticmap.php'
+        f'?center={lat},{lon}&zoom=12&size=1920x960&maptype=mapnik'
+        f'&markers={lat},{lon},red-pushpin'
+    )
+    try:
+        upstream = requests.get(
+            static_url,
+            timeout=20,
+            headers={'User-Agent': 'AirWatch/2.2 (PFE air quality)'},
+        )
+        if upstream.status_code == 200 and upstream.content:
+            resp = Response(upstream.content, mimetype=upstream.headers.get('Content-Type', 'image/png'))
+            resp.headers['Cache-Control'] = 'public, max-age=600'
+            return resp
+        logger.warning('Carte statique: HTTP %s depuis staticmap', upstream.status_code)
+    except Exception as e:
+        logger.warning('Carte statique indisponible: %s', e)
+
+    # SVG de secours si le service externe échoue
+    label = f'{lat:.4f}, {lon:.4f}'
+    svg = f'''<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="560" viewBox="0 0 1280 560">
+  <rect width="100%" height="100%" fill="#1e293b"/>
+  <text x="50%" y="48%" text-anchor="middle" fill="#94a3b8" font-family="sans-serif" font-size="22">
+    Carte temporairement indisponible
+  </text>
+  <text x="50%" y="54%" text-anchor="middle" fill="#e2e8f0" font-family="sans-serif" font-size="18">{label}</text>
+</svg>'''
+    return Response(svg, mimetype='image/svg+xml')
 
 
 @app.route('/news')
@@ -2000,6 +2043,165 @@ def chatbot_advice():
 @app.route('/api/chatbot/reset', methods=['POST'])
 def chatbot_reset():
     return jsonify({'status': 'error', 'message': 'API deprecated. Use /chatbot form submission instead.'}), 400
+
+
+# ============= ENTREPRISE ROUTES (CO2 WASH) =============
+import random
+from functools import wraps
+
+def entreprise_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('entreprise_logged_in'):
+            return redirect(url_for('entreprise_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def get_external_emissions_data():
+    """Fetch real emissions data from Carbon Interface or fallback if no key"""
+    api_key = os.getenv('CARBON_INTERFACE_API_KEY')
+    if api_key:
+        try:
+            # Example call to Carbon Interface API for electricity generation emissions
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            payload = {
+                "type": "electricity",
+                "electricity_unit": "mwh",
+                "electricity_value": 50.0, # Assumed 50 MWh consumed by factory per hour
+                "country": "ma" # Morocco
+            }
+            resp = requests.post("https://www.carboninterface.com/api/v1/estimates", json=payload, headers=headers, timeout=5)
+            if resp.status_code == 201:
+                data = resp.json()
+                return data['data']['attributes']['carbon_kg']
+        except Exception as e:
+            logger.error(f"Erreur API Carbone: {e}")
+    
+    # Fallback réaliste : génère autour de 18 tonnes de CO2 émises
+    base_emissions = 18000.0 
+    noise = random.uniform(-1000.0, 1500.0)
+    return base_emissions + noise
+
+@app.route('/entreprise/login', methods=['GET', 'POST'])
+def entreprise_login():
+    error = None
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        if username == 'admin' and password == 'pfe2026':
+            session['entreprise_logged_in'] = True
+            return redirect(url_for('entreprise_co2_wash'))
+        else:
+            error = "Identifiants invalides."
+    return render_template('login_entreprise.html', error=error)
+
+@app.route('/entreprise/logout')
+def entreprise_logout():
+    session.pop('entreprise_logged_in', None)
+    return redirect(url_for('entreprise_login'))
+
+@app.route('/entreprise/co2-wash')
+@entreprise_required
+def entreprise_co2_wash():
+    # Fetch real gross emissions from the external API (or realistic fallback)
+    gross_emissions_kg = get_external_emissions_data()
+    
+    # CO2 Wash Efficiency (varies between 85% and 92%)
+    efficiency = random.uniform(0.85, 0.92)
+    
+    captured_kg = gross_emissions_kg * efficiency
+    net_emissions_kg = gross_emissions_kg - captured_kg
+    
+    # Trees equivalent (assuming a tree absorbs ~22kg of CO2 per year)
+    trees_saved = int(captured_kg / (22.0 / 365.0)) # Daily equivalent
+    
+    stats = {
+        'gross': round(gross_emissions_kg, 1),
+        'efficiency': round(efficiency * 100, 1),
+        'captured': round(captured_kg, 1),
+        'net': round(net_emissions_kg, 1),
+        'trees': trees_saved,
+        'status': 'Actif - Filtrage Nominal'
+    }
+    
+    return render_template('co2_wash.html', stats=stats, active_nav='co2-wash')
+
+@app.route('/entreprise/assistant', methods=['GET', 'POST'])
+@entreprise_required
+def entreprise_assistant():
+    if 'ent_chat_history' not in session:
+        session['ent_chat_history'] = [
+            {
+                'role': 'assistant',
+                'content': "🏭 Bonjour. Je suis votre IA d'optimisation environnementale. Voulez-vous un résumé de vos émissions actuelles ou des conseils pour optimiser votre filtre CO2 Wash ?",
+                'timestamp': datetime.now().strftime('%H:%M')
+            }
+        ]
+        
+    if request.method == 'POST':
+        action = request.form.get('action', '').strip()
+        user_input = request.form.get('user_input', '').strip()
+        
+        if action == 'reset':
+            session['ent_chat_history'] = [
+                {
+                    'role': 'assistant',
+                    'content': "🔄 Session réinitialisée. Comment puis-je vous aider avec vos procédés industriels ?",
+                    'timestamp': datetime.now().strftime('%H:%M')
+                }
+            ]
+            session.modified = True
+            return redirect(url_for('entreprise_assistant') + '#bottom')
+            
+        if user_input:
+            history = session['ent_chat_history']
+            history.append({
+                'role': 'user',
+                'content': user_input,
+                'timestamp': datetime.now().strftime('%H:%M')
+            })
+            session['ent_chat_history'] = history
+            session.modified = True
+            
+            try:
+                chatbot_inst = get_chatbot()
+                # Sync history to chatbot
+                chatbot_inst.conversation_history = [
+                    {'role': msg['role'], 'content': msg['content']}
+                    for msg in session['ent_chat_history'][:-1]
+                ]
+                
+                # Context with current emissions
+                gross = get_external_emissions_data()
+                context = {"Emissions actuelles": f"{round(gross, 1)} kg/h", "Efficacité lavage": "88%"}
+                
+                response = chatbot_inst.chat(user_input, weather_context=context, mode='enterprise')
+                
+                if response.get('status') == 'success':
+                    assistant_msg = response.get('message', '')
+                else:
+                    assistant_msg = f"Erreur IA : {response.get('message')}"
+                    
+            except Exception as e:
+                logger.error(f"Erreur chatbot entreprise: {str(e)}")
+                assistant_msg = "Erreur de communication avec l'IA industrielle."
+                
+            history = session['ent_chat_history']
+            history.append({
+                'role': 'assistant',
+                'content': assistant_msg,
+                'timestamp': datetime.now().strftime('%H:%M')
+            })
+            session['ent_chat_history'] = history
+            session.modified = True
+            
+            return redirect(url_for('entreprise_assistant') + '#bottom')
+
+    return render_template(
+        'entreprise_chatbot.html',
+        active_nav='assistant',
+        chat_history=session['ent_chat_history']
+    )
 
 
 if __name__ == '__main__':
