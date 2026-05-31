@@ -1,0 +1,97 @@
+{% extends "entreprise_base.html" %}
+{% block title %}Projections CO2 — AirWatch B2B{% endblock %}
+
+{% block extra_css %}
+<style>
+    .pred-container {
+        padding: var(--spacing-lg);
+    }
+    .pred-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--bg-tertiary);
+        border-radius: var(--radius-lg);
+        padding: var(--spacing-lg);
+        margin-bottom: var(--spacing-lg);
+        box-shadow: var(--shadow-md);
+    }
+    .table-responsive {
+        overflow-x: auto;
+    }
+    .pred-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+    }
+    .pred-table th, .pred-table td {
+        padding: 1rem;
+        border-bottom: 1px solid var(--bg-tertiary);
+    }
+    .pred-table th {
+        color: var(--text-secondary);
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+        letter-spacing: 0.5px;
+    }
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .status-ok { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+    .status-warning { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+    .status-critical { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="header">
+    <div class="header-left">
+        <h2 class="page-title">Projections d'Émissions à 7 Jours</h2>
+        <p class="page-subtitle">Modélisation de l'usure du filtre CO2 Wash et des futurs rejets nets</p>
+    </div>
+</header>
+
+<div class="pred-container">
+    <div class="pred-card">
+        <h3 style="margin-top:0;">Détérioration Estimée du Filtre d'Absorption</h3>
+        <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1.5rem;">
+            L'intelligence artificielle a analysé l'usure de votre membrane de lavage CO2. Une maintenance est recommandée si l'efficacité chute sous les 75%.
+        </p>
+        
+        <div class="table-responsive">
+            <table class="pred-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Jour</th>
+                        <th>Émissions Brutes Projetées</th>
+                        <th>Efficacité Estimée</th>
+                        <th>Statut Filtre</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in projections %}
+                    <tr>
+                        <td style="font-weight: 500;">{{ p.date }}</td>
+                        <td style="color: var(--text-secondary);">{{ p.day_name }}</td>
+                        <td>{{ p.gross_emissions }} kg/h</td>
+                        <td style="font-weight: bold;">{{ p.efficiency }} %</td>
+                        <td>
+                            {% if p.status == 'OK' %}
+                                <span class="status-badge status-ok">Optimal</span>
+                            {% elif p.status == 'WARNING' %}
+                                <span class="status-badge status-warning">Usure Modérée</span>
+                            {% else %}
+                                <span class="status-badge status-critical">Maintenance Requise</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

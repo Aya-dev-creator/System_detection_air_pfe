@@ -1,0 +1,123 @@
+{% extends "entreprise_base.html" %}
+{% block title %}Réseau d'Usines — AirWatch B2B{% endblock %}
+
+{% block extra_css %}
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+    .map-container {
+        height: calc(100vh - 120px);
+        width: 100%;
+        border-radius: var(--radius-lg);
+        overflow: hidden;
+        border: 1px solid var(--bg-tertiary);
+        margin: var(--spacing-md);
+        box-shadow: var(--shadow-lg);
+    }
+    
+    #factory-map {
+        height: 100%;
+        width: 100%;
+        background-color: #e5e5e5;
+    }
+    
+    /* Custom Leaflet Marker Styling to match the Vintage Image */
+    .custom-aqi-marker {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-top: -30px; /* offset to point at exact location */
+    }
+    
+    .aqi-bubble {
+        padding: 4px 8px;
+        border-radius: 12px;
+        color: white;
+        font-weight: 700;
+        font-size: 0.85rem;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        border: 2px solid white;
+        margin-bottom: 2px;
+    }
+    
+    .city-label {
+        background: white;
+        color: #333;
+        font-weight: 600;
+        font-size: 0.75rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        white-space: nowrap;
+    }
+    
+    .leaflet-popup-content-wrapper {
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        border-radius: 8px;
+    }
+    .leaflet-popup-tip {
+        background: var(--bg-secondary);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<header class="header">
+    <div class="header-left">
+        <h2 class="page-title">Carte du Réseau Industriel</h2>
+        <p class="page-subtitle">Surveillance en temps réel des usines et de leur qualité d'air</p>
+    </div>
+</header>
+
+<div class="map-container">
+    <div id="factory-map"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize the map (centered on Europe/Africa)
+    var map = L.map('factory-map').setView([30.0, 10.0], 3);
+
+    // Use Esri NatGeoWorldMap tile layer to get the beautiful vintage look
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/NatGeo_World_Map/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; National Geographic, Esri, DeLorme, NAVTEQ, UNEP-WCMC, USGS, NASA, ESA, METI, NRCAN, GEBCO, NOAA, iPC',
+        maxZoom: 16
+    }).addTo(map);
+
+    // Factory data passed from backend
+    var factories = {{ factories | tojson }};
+    
+    factories.forEach(function(factory) {
+        // Create custom HTML icon
+        var customIcon = L.divIcon({
+            className: 'custom-div-icon',
+            html: `
+                <div class="custom-aqi-marker">
+                    <div class="aqi-bubble" style="background-color: ${factory.color};">${factory.aqi}</div>
+                    <div class="city-label">${factory.name.split(' ')[0]}</div>
+                </div>
+            `,
+            iconSize: [60, 40],
+            iconAnchor: [30, 40]
+        });
+
+        // Add marker to map
+        var marker = L.marker([factory.lat, factory.lon], {icon: customIcon}).addTo(map);
+        
+        // Add popup
+        marker.bindPopup(`
+            <div style="text-align:center;">
+                <h4 style="margin:0 0 5px 0;">${factory.name}</h4>
+                <p style="margin:0;">AQI Local: <strong>${factory.aqi}</strong></p>
+                <p style="margin:0;font-size:0.8em;color:#888;">Système CO2 Wash: Actif</p>
+            </div>
+        `);
+    });
+});
+</script>
+{% endblock %}

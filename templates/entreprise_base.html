@@ -46,6 +46,15 @@
             <span></span><span></span><span></span>
         </label>
         <div class="mobile-header-title">AirWatch B2B</div>
+        <a href="{{ url_for('toggle_theme') }}" class="mobile-theme-btn"
+           title="{% if theme == 'dark' %}Activer le mode clair{% else %}Activer le mode sombre{% endif %}"
+           aria-label="{% if theme == 'dark' %}Activer le mode clair{% else %}Activer le mode sombre{% endif %}">
+            {% if theme == 'dark' %}
+            <i class="fas fa-sun" aria-hidden="true"></i>
+            {% else %}
+            <i class="fas fa-moon" aria-hidden="true"></i>
+            {% endif %}
+        </a>
     </div>
 
     <div class="sidebar">
@@ -84,6 +93,21 @@
         </nav>
 
         <div class="sidebar-footer">
+            <a href="{{ url_for('toggle_theme') }}" class="theme-toggle"
+               title="{% if theme == 'dark' %}Activer le mode clair{% else %}Activer le mode sombre{% endif %}">
+                <span class="toggle-icon" aria-hidden="true">
+                    {% if theme == 'dark' %}
+                    <i class="fas fa-sun"></i>
+                    {% else %}
+                    <i class="fas fa-moon"></i>
+                    {% endif %}
+                </span>
+                <span class="toggle-text">{% if theme == 'dark' %}Mode clair{% else %}Mode sombre{% endif %}</span>
+                <span class="switch" aria-hidden="true">
+                    <span class="slider {{ 'checked' if theme == 'light' else '' }}"></span>
+                </span>
+            </a>
+            <div class="sidebar-footer-divider" aria-hidden="true"></div>
             <div class="system-info">
                 <div class="status-indicator online" aria-hidden="true"></div>
                 <span>Session Sécurisée</span>
