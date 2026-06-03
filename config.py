@@ -86,7 +86,15 @@ class Config:
         
         # Clé secrète pour sécuriser les sessions Flask
         # DOIT être changée en production pour éviter les attaques
-        'secret_key': os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+        'secret_key': os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production'),
+
+        # ---- Module Entreprises & Industries ----
+        # Extensions de fichiers autorisées pour l'upload (uniquement CSV)
+        'ALLOWED_EXTENSIONS': {'csv'},
+
+        # Dossier temporaire de stockage des fichiers CSV uploadés
+        # Ce dossier doit exister avant le démarrage du serveur
+        'UPLOAD_FOLDER': os.getenv('UPLOAD_FOLDER', './data/uploads')
     }
     
     # ============= CONFIGURATION EMAIL (ALERTES) =============

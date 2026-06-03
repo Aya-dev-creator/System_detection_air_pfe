@@ -23,6 +23,9 @@ requests==2.31.0
 # Mistral AI API for Chatbot
 mistralai==2.4.7
 
+# Module Entreprises & Industries
+folium==0.14.0
+
 # Note: Raspberry Pi GPIO and sensor libraries have been removed
 # This project now uses OpenWeatherMap API instead of physical sensors
 # Removed dependencies:

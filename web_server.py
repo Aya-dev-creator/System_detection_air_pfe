@@ -13,6 +13,14 @@ import os
 import urllib.parse
 import xml.etree.ElementTree as ET
 import numpy as np
+import csv
+import io
+import random
+try:
+    import folium
+    FOLIUM_AVAILABLE = True
+except ImportError:
+    FOLIUM_AVAILABLE = False
 from config import config
 from database import AirQualityDatabase
 from ml_model import AirQualityPredictor
@@ -2244,6 +2252,397 @@ def entreprise_predictions():
         })
         
     return render_template('entreprise_predictions.html', active_nav='ent_predictions', projections=projections)
+
+
+# ============= MODULE ENTREPRISES & INDUSTRIES (Analyse CSV capteurs) =============
+
+def allowed_file(filename):
+    """
+    Vérifie si un fichier a une extension autorisée (CSV uniquement).
+    
+    Args:
+        filename (str): Nom du fichier
+    
+    Returns:
+        bool: True si le fichier est autorisé, False sinon
+    """
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in config.FLASK_CONFIG.get('ALLOWED_EXTENSIONS', {'csv'})
+
+
+def parse_csv_pollution_data(file_stream):
+    """
+    Parse un fichier CSV contenant des données de capteurs de pollution internes.
+    
+    Le CSV doit contenir des colonnes comme: pm2_5, pm10, co, no2, so2, co2 (ou variantes).
+    Calcule la moyenne de chaque polluant et retourne un résumé analytique.
+    
+    Args:
+        file_stream: Flux de fichier (FileStorage ou BytesIO)
+    
+    Returns:
+        dict: 
+            - success (bool): Succès du parsing
+            - average_factors (dict): Moyennes par polluant
+            - pollution_summary (dict): Pourcentages par rapport aux seuils critiques
+            - error (str): Message d'erreur si echec
+    """
+    try:
+        # Configurer les seuils critiques pour le calcul des pourcentages
+        # (référence : norme AQI OpenWeather)
+        critical_thresholds = {
+            'PM2.5': 35.0,
+            'PM10': 50.0,
+            'CO': 5.0,
+            'NO2': 40.0,
+            'SO2': 20.0,
+            'CO2': 800.0,
+        }
+        
+        # Décoder le fichier (support UTF-8 et fallback ASCII)
+        file_bytes = file_stream.read()
+        try:
+            text_stream = file_bytes.decode('utf-8')
+        except UnicodeDecodeError:
+            text_stream = file_bytes.decode('ascii', errors='ignore')
+        
+        # Parser le CSV
+        reader = csv.DictReader(io.StringIO(text_stream))
+        rows = list(reader)
+        
+        if not rows:
+            return {
+                'success': False,
+                'error': 'Le fichier CSV est vide ou mal formaté.'
+            }
+        
+        # Normaliser les noms de colonnes (minuscules, espaces supprimés)
+        # Guard: ignorer les clés None/vides (CSV mal formé avec virgules en trop)
+        normalized_rows = []
+        for row in rows:
+            norm_row = {
+                k.strip().lower().replace(' ', '_'): v
+                for k, v in row.items()
+                if k is not None and str(k).strip() != ''
+            }
+            normalized_rows.append(norm_row)
+        
+        # Accumulateurs pour calculer les moyennes
+        accumulators = {}
+        value_counts = {}
+        
+        for row in normalized_rows:
+            for key, value in row.items():
+                if not key:  # ignorer clés vides
+                    continue
+                # Chercher les colonnes de pollution (pm2_5, pm10, co, no2, so2, co2, etc.)
+                # Note: Check 'co2' BEFORE 'co' to avoid matching co2 as co
+                if any(pol_name.lower() in key for pol_name in ['pm2', 'pm10', 'no2', 'so2', 'co2', 'co']):
+                    try:
+                        val = float(value)
+                        if key not in accumulators:
+                            accumulators[key] = 0.0
+                            value_counts[key] = 0
+                        accumulators[key] += val
+                        value_counts[key] += 1
+                    except (ValueError, TypeError):
+                        pass  # Ignorer les cellules non-numériques
+        
+        # Calculer les moyennes
+        average_factors = {}
+        for key in accumulators:
+            if value_counts[key] > 0:
+                average_factors[key] = round(accumulators[key] / value_counts[key], 2)
+        
+        # Calculer les pourcentages par rapport aux seuils critiques
+        pollution_summary = {}
+        for factor_key, avg_value in average_factors.items():
+            # Mapper les clés CSV normalisées aux noms standards AQI
+            # Important: Check 'co2' BEFORE 'co' to avoid false matches
+            if 'co2' in factor_key:
+                pollutant_name = 'CO2'
+                threshold = critical_thresholds['CO2']
+            elif 'pm2' in factor_key:
+                pollutant_name = 'PM2.5'
+                threshold = critical_thresholds['PM2.5']
+            elif 'pm10' in factor_key:
+                pollutant_name = 'PM10'
+                threshold = critical_thresholds['PM10']
+            elif 'no2' in factor_key:
+                pollutant_name = 'NO2'
+                threshold = critical_thresholds['NO2']
+            elif 'so2' in factor_key:
+                pollutant_name = 'SO2'
+                threshold = critical_thresholds['SO2']
+            elif 'co' in factor_key:
+                pollutant_name = 'CO'
+                threshold = critical_thresholds['CO']
+            else:
+                pollutant_name = factor_key.upper()
+                threshold = 100.0
+            
+            # Calcul du pourcentage relatif au seuil critique
+            percentage = (avg_value / threshold * 100) if threshold > 0 else 0
+            pollution_summary[pollutant_name] = round(percentage, 1)
+        
+        logger.info(f"Parsing CSV réussi: {len(rows)} lignes, {len(pollution_summary)} polluants détectés")
+        
+        return {
+            'success': True,
+            'average_factors': average_factors,
+            'pollution_summary': pollution_summary,
+            'num_records': len(rows)
+        }
+    
+    except Exception as e:
+        logger.error(f"Erreur parsing CSV: {str(e)}")
+        return {
+            'success': False,
+            'error': f"Erreur lors de la lecture du CSV: {str(e)}"
+        }
+
+
+def generate_folium_map(entity_name: str, entity_type: str, lat: float, lon: float, aqi_level: int):
+    """
+    Génère une carte statique Folium (HTML) avec marqueur AQI coloré.
+    
+    Args:
+        entity_name (str): Nom de l'entité
+        entity_type (str): Type (Usine, Ville, Pays)
+        lat (float): Latitude
+        lon (float): Longitude
+        aqi_level (int): Indice AQI ou ppm
+    
+    Returns:
+        str: Chemin vers le fichier HTML généré ou None si Folium n'est pas disponible
+    """
+    if not FOLIUM_AVAILABLE:
+        logger.warning("Folium non installé - carte statique non disponible")
+        return None
+    
+    try:
+        # Déterminer la couleur du marqueur selon l'AQI
+        if aqi_level <= 50:
+            color = 'green'
+            status = 'Bon'
+        elif aqi_level <= 100:
+            color = 'yellow'
+            status = 'Modéré'
+        elif aqi_level <= 150:
+            color = 'orange'
+            status = 'Mauvais'
+        else:
+            color = 'red'
+            status = 'Très mauvais'
+        
+        # Créer la carte centrée sur la position
+        m = folium.Map(
+            location=[lat, lon],
+            zoom_start=10,
+            tiles='OpenStreetMap'
+        )
+        
+        # Ajouter un marqueur coloré
+        folium.Marker(
+            location=[lat, lon],
+            popup=f"<b>{entity_name}</b><br>{entity_type}<br>AQI: {aqi_level}<br>Status: {status}",
+            tooltip=f"{entity_name} - AQI {aqi_level}",
+            icon=folium.Icon(color=color, icon='info-sign')
+        ).add_to(m)
+        
+        # Ajouter un cercle de rayon proportionnel à la pollution
+        circle_radius = max(500, min(10000, aqi_level * 50))
+        folium.Circle(
+            location=[lat, lon],
+            radius=circle_radius,
+            color=color,
+            fill=True,
+            fillColor=color,
+            fillOpacity=0.3,
+            popup=f"Zone AQI {aqi_level}"
+        ).add_to(m)
+        
+        # Sauvegarder la carte
+        map_path = os.path.join(_this_dir, 'templates', 'static_map_render.html')
+        m.save(map_path)
+        
+        logger.info(f"Carte Folium générée: {map_path}")
+        return map_path
+    
+    except Exception as e:
+        logger.error(f"Erreur génération carte Folium: {str(e)}")
+        return None
+
+
+@app.route('/entreprise')
+@entreprise_required
+def entreprise_home():
+    """
+    Page d'accueil du module entreprises - formulaire d'upload CSV.
+    Affiche un formulaire pour uploader un CSV et sélectionner le type d'entité.
+    """
+    error = request.args.get('error', '')
+    theme = session.get('theme', 'dark')
+    return render_template('entreprise_upload.html', error=error, theme=theme, active_nav='csv_upload')
+
+
+@app.route('/entreprise/upload', methods=['POST'])
+@entreprise_required
+def entreprise_upload():
+    """
+    Route POST pour l'upload et le parsing du fichier CSV.
+    
+    - Reçoit le fichier CSV + type d'entité + nom
+    - Parse les données de pollution
+    - Stocke en session pour éviter re-parsing
+    - Redirige vers le dashboard
+    """
+    try:
+        # Vérifier la présence du fichier
+        if 'file' not in request.files:
+            return redirect(url_for('entreprise_home') + '?error=Aucun%20fichier%20fourni')
+        
+        file = request.files['file']
+        entity_name = request.form.get('entity_name', '').strip()
+        entity_type = request.form.get('entity_type', 'Usine').strip()
+        
+        if not entity_name:
+            return redirect(url_for('entreprise_home') + '?error=Nom%20d\'entité%20vide')
+        
+        if file.filename == '':
+            return redirect(url_for('entreprise_home') + '?error=Fichier%20vide')
+        
+        if not allowed_file(file.filename):
+            return redirect(url_for('entreprise_home') + '?error=Format%20fichier%20invalide%20-%20CSV%20requis')
+        
+        # Parser le CSV
+        parse_result = parse_csv_pollution_data(file)
+        
+        if not parse_result['success']:
+            error_msg = parse_result.get('error', 'Erreur inconnue')
+            return redirect(url_for('entreprise_home') + f'?error={error_msg.replace(" ", "%20")}')
+        
+        # Stocker les résultats en session (évite re-parsing)
+        session['entreprise_data'] = {
+            'entity_name': entity_name,
+            'entity_type': entity_type,
+            'pollution_summary': parse_result['pollution_summary'],
+            'average_factors': parse_result['average_factors'],
+            'num_records': parse_result.get('num_records', 0),
+            'upload_timestamp': datetime.now().isoformat(),
+        }
+        
+        logger.info(f"Données entreprise stockées en session pour «{entity_name}»")
+        
+        return redirect(url_for('entreprise_dashboard'))
+    
+    except Exception as e:
+        logger.error(f"Erreur upload entreprise: {str(e)}")
+        return redirect(url_for('entreprise_home') + f'?error=Erreur%20serveur:%20{str(e)[:50]}')
+
+
+@app.route('/entreprise/dashboard')
+def entreprise_dashboard():
+    """
+    Dashboard analytique SSR avec tri/filtrage côté serveur.
+    
+    Affiche:
+    - Statistiques clés (KPIs) des polluants
+    - Barres de progression CSS pour chaque polluant
+    - Liens de tri HTML standards
+    - Plan d'action généré par Mistral AI
+    - Carte statique de pollution
+    """
+    # Récupérer les données stockées en session
+    ent_data = session.get('entreprise_data')
+    
+    if not ent_data:
+        return redirect(url_for('entreprise_home') + '?error=Pas%20de%20données%20uploadées')
+    
+    entity_name = ent_data['entity_name']
+    entity_type = ent_data['entity_type']
+    pollution_summary = ent_data['pollution_summary']
+    
+    # Récupérer le paramètre de tri depuis l'URL
+    sort_by = request.args.get('sort_by', 'name')  # 'name', 'rate', 'value'
+    order = request.args.get('order', 'asc')  # 'asc', 'desc'
+    
+    # Construire la liste des polluants avec détails pour le tri
+    pollution_items = []
+    for pollutant_name, percentage in pollution_summary.items():
+        # Déterminer la couleur selon le pourcentage
+        if percentage <= 50:
+            color_threshold = '#10b981'  # Vert
+        elif percentage <= 100:
+            color_threshold = '#f59e0b'  # Ambre
+        else:
+            color_threshold = '#ef4444'  # Rouge
+        
+        pollution_items.append({
+            'name': pollutant_name,
+            'percentage': percentage,
+            'value': ent_data['average_factors'].get(pollutant_name.lower().replace('.', ''), 0),
+            'color_threshold': color_threshold,
+        })
+    
+    # Appliquer le tri
+    if sort_by == 'rate':
+        pollution_items.sort(key=lambda x: x['percentage'], reverse=(order == 'desc'))
+    elif sort_by == 'value':
+        pollution_items.sort(key=lambda x: x['value'], reverse=(order == 'desc'))
+    else:  # sort_by == 'name'
+        pollution_items.sort(key=lambda x: x['name'], reverse=(order == 'desc'))
+    
+    # Générer les recommandations Mistral AI
+    chatbot = get_chatbot()
+    ai_report_html = chatbot.generate_industrial_recommendations(
+        entity_name=entity_name,
+        entity_type=entity_type,
+        pollution_summary=pollution_summary
+    )
+    
+    # Générer une carte (optionnel, si Folium est disponible)
+    # Utiliser des coordonnées fictives ou fournies par l'utilisateur
+    lat, lon = 33.5731, -7.5898  # Casablanca par défaut
+    map_file = generate_folium_map(
+        entity_name=entity_name,
+        entity_type=entity_type,
+        lat=lat,
+        lon=lon,
+        aqi_level=int(sum(pollution_summary.values()) / len(pollution_summary)) if pollution_summary else 50
+    )
+    
+    # Calculer des statistiques globales
+    stats = {
+        'total_pollutants': len(pollution_summary),
+        'average_pollution': round(sum(pollution_summary.values()) / len(pollution_summary), 1) if pollution_summary else 0,
+        'max_pollution': max(pollution_summary.values()) if pollution_summary else 0,
+        'num_records_analyzed': ent_data.get('num_records', 'N/A'),
+    }
+    
+    return render_template(
+        'entreprise_dashboard.html',
+        entity_name=entity_name,
+        entity_type=entity_type,
+        pollution_items=pollution_items,
+        ai_report=ai_report_html,
+        stats=stats,
+        sort_by=sort_by,
+        order=order,
+        map_file=map_file,
+    )
+
+
+@app.route('/map-view')
+def entreprise_map_view():
+    """
+    Affiche la carte Folium générée (en iframe depuis le dashboard entreprise).
+    """
+    try:
+        return render_template('static_map_render.html')
+    except Exception as e:
+        logger.error(f"Erreur chargement carte: {str(e)}")
+        return f"<p>Erreur chargement carte: {str(e)}</p>", 500
+
 
 if __name__ == '__main__':
     # Initialiser le serveur

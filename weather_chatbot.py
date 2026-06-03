@@ -178,6 +178,101 @@ Please provide:
         
         return self.chat(prompt, weather_context=context)
     
+    def generate_industrial_recommendations(self, entity_name: str, entity_type: str, pollution_summary: dict) -> str:
+        """
+        Génère un plan d'action environnemental personnalisé via Mistral AI
+        pour une entité industrielle (Usine, Ville ou Pays).
+
+        Le prompt positionne Mistral comme expert en ingénierie environnementale
+        et décarbonation industrielle. La réponse est retournée en HTML propre
+        (balises h3/p/ul/li uniquement) — aucun bloc Markdown, aucun JS.
+
+        Args:
+            entity_name    (str) : Nom de l'entité (ex. "Usine Nord Casablanca")
+            entity_type    (str) : Type — "Usine", "Ville" ou "Pays"
+            pollution_summary (dict): Facteurs de pollution avec leur taux/pourcentage.
+                Exemple: {'CO': 42.3, 'CO2': 78.1, 'PM2.5': 55.0, 'PM10': 34.7}
+
+        Returns:
+            str: HTML brut prêt à être injecté via |safe dans Jinja2.
+                 Retourne un message d'erreur en HTML en cas d'échec API.
+        """
+        # ---- Prompt système : expert en décarbonation industrielle ----
+        industrial_system_prompt = (
+            "Vous êtes un Expert senior en ingénierie environnementale et décarbonation industrielle, "
+            "spécialisé dans la réduction des émissions atmosphériques pour des entités industrielles "
+            "(usines, villes, pays). Votre rôle est d'analyser des données de capteurs de pollution "
+            "et de proposer des solutions concrètes, réalistes et hiérarchisées pour réduire l'impact "
+            "environnemental.\n\n"
+            "CONSIGNES DE FORMATAGE OBLIGATOIRES :\n"
+            "1. Répondez EXCLUSIVEMENT en français, ton professionnel et analytique.\n"
+            "2. Retournez DIRECTEMENT du HTML brut — SANS bloc ```html ni ``` ni tout autre marqueur Markdown.\n"
+            "3. Utilisez UNIQUEMENT ces balises HTML : <h3>, <p>, <ul>, <li>, <strong>.\n"
+            "4. Structurez la réponse en 3 sections : Analyse du profil de pollution, "
+            "Plan d'action prioritaire (au moins 4 mesures concrètes), Indicateurs de suivi recommandés.\n"
+            "5. Chaque mesure doit mentionner le polluant ciblé, la technologie ou méthode proposée, "
+            "et l'impact attendu en pourcentage de réduction.\n"
+            "6. Rédigez chaque section en détail, avec au moins 3 à 4 phrases par paragraphe. "
+            "N'écourtez pas votre réponse — complétez toujours les trois sections en entier."
+        )
+
+        # ---- Construction du résumé lisible des facteurs de pollution ----
+        if pollution_summary:
+            facteurs_str = "\n".join(
+                f"  - {k} : {v:.1f} % du seuil critique"
+                for k, v in pollution_summary.items()
+            )
+        else:
+            facteurs_str = "  - Données non disponibles"
+
+        # ---- Message utilisateur structuré ----
+        user_prompt = (
+            f"Entité analysée : {entity_name} (Type : {entity_type})\n\n"
+            f"Données capteurs internes — taux de pollution par rapport aux seuils critiques :\n"
+            f"{facteurs_str}\n\n"
+            f"En tant qu'expert en décarbonation industrielle, génère un plan d'action environnemental "
+            f"complet et opérationnel pour cette {entity_type.lower()}. "
+            f"Priorise les polluants les plus élevés et propose des technologies adaptées à l'échelle "
+            f"de l'entité ({entity_type})."
+        )
+
+        try:
+            logger.info(
+                f"Génération recommandations industrielles pour «{entity_name}» ({entity_type})"
+            )
+            response = self.client.chat.complete(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": industrial_system_prompt},
+                    {"role": "user",   "content": user_prompt},
+                ],
+                temperature=0.6,   # Légèrement déterministe pour des recommandations cohérentes
+                max_tokens=1500,   # Suffisant pour 3 sections complètes
+            )
+            html_result = response.choices[0].message.content.strip()
+
+            # Sécurité : supprimer les éventuels blocs Markdown si le modèle les ajoute quand même
+            if html_result.startswith("```"):
+                # Retirer la première ligne (```html ou ```) et la dernière (```)
+                lines = html_result.splitlines()
+                if lines[0].startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                html_result = "\n".join(lines)
+
+            logger.info("Recommandations industrielles générées avec succès.")
+            return html_result
+
+        except Exception as exc:
+            logger.error(f"Erreur Mistral recommendations industrielles : {exc}")
+            return (
+                "<h3>⚠️ Service IA temporairement indisponible</h3>"
+                "<p>Le plan d'action environnemental n'a pas pu être généré. "
+                "Veuillez vérifier votre clé API Mistral et réessayer.</p>"
+                f"<p><strong>Détail technique :</strong> {exc}</p>"
+            )
+
     def _build_weather_context(self, weather_data):
         """Build a readable weather context string"""
         context = []
