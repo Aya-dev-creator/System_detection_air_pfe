@@ -2101,7 +2101,11 @@ def entreprise_login():
             return redirect(url_for('entreprise_co2_wash'))
         else:
             error = "Identifiants invalides."
-    return render_template('login_entreprise.html', error=error)
+    return render_template(
+        'login_entreprise.html',
+        error=error,
+        theme=session.get('theme', 'dark'),
+    )
 
 @app.route('/entreprise/logout')
 def entreprise_logout():
@@ -2629,6 +2633,7 @@ def entreprise_dashboard():
         sort_by=sort_by,
         order=order,
         map_file=map_file,
+        active_nav='ent_dashboard',
     )
 
 

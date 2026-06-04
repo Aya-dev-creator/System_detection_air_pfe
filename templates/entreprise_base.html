@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>{% block title %}AirWatch Entreprise{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v={{ app_build|default('3') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}?v={{ app_build|default('2') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,10 +15,6 @@
     {% block extra_css %}{% endblock %}
     {% block extra_head_scripts %}{% endblock %}
     <style>
-        /* Styles spécifiques pour différencier l'Espace Entreprise */
-        .sidebar { background-color: #0b1120; border-right: 1px solid #1e293b; }
-        .logo-title { color: #60a5fa; }
-        .nav-item.active { background: rgba(59, 130, 246, 0.15); border-left: 3px solid #3b82f6; }
         @media (max-width: 1024px) {
             .sidebar {
                 transform: translateX(-100%);
@@ -33,9 +29,29 @@
                 background: var(--menu-overlay);
                 z-index: 999;
             }
+            #menu-toggle:checked ~ .mobile-header .menu-toggle-btn span:nth-child(1) {
+                transform: rotate(45deg) translate(5px, 5px);
+            }
+            #menu-toggle:checked ~ .mobile-header .menu-toggle-btn span:nth-child(2) { opacity: 0; }
+            #menu-toggle:checked ~ .mobile-header .menu-toggle-btn span:nth-child(3) {
+                transform: rotate(-45deg) translate(7px, -7px);
+            }
         }
-        .menu-toggle-btn { display: flex; flex-direction: column; gap: 5px; cursor: pointer; padding: 10px; }
-        .menu-toggle-btn span { display: block; width: 25px; height: 3px; background: var(--text-primary); border-radius: 3px; transition: all 0.3s ease; }
+        .menu-toggle-btn {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            cursor: pointer;
+            padding: 10px;
+        }
+        .menu-toggle-btn span {
+            display: block;
+            width: 25px;
+            height: 3px;
+            background: var(--text-primary);
+            border-radius: 3px;
+            transition: all 0.3s ease;
+        }
     </style>
 </head>
 <body data-theme="{{ theme|default('dark') }}">
@@ -59,12 +75,16 @@
 
     <div class="sidebar">
         <div class="logo">
-            <div class="logo-icon" aria-hidden="true" style="color:#3b82f6;"><i class="fas fa-industry"></i></div>
-            <h1 class="logo-title" style="font-size: 1.2rem;">AirWatch B2B</h1>
+            <div class="logo-icon" aria-hidden="true"><i class="fas fa-industry"></i></div>
+            <h1 class="logo-title">AirWatch B2B</h1>
         </div>
 
         <nav class="nav-menu" aria-label="Navigation principale">
-            <div style="padding: 0 1rem; margin-top: 1rem; margin-bottom: 0.5rem; font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Espace Industriel</div>
+            <div class="nav-section-label">Espace industriel</div>
+            <a href="/entreprise/dashboard" class="nav-item {{ 'active' if (active_nav|default('')) == 'ent_dashboard' else '' }}">
+                <span class="nav-icon"><i class="fas fa-chart-pie"></i></span>
+                <span class="nav-text">Dashboard Analyse</span>
+            </a>
             <a href="/entreprise/co2-wash" class="nav-item {{ 'active' if (active_nav|default('')) == 'co2-wash' else '' }}">
                 <span class="nav-icon"><i class="fas fa-filter"></i></span>
                 <span class="nav-text">Dashboard CO2 Wash</span>
@@ -73,11 +93,11 @@
                 <span class="nav-icon"><i class="fas fa-robot"></i></span>
                 <span class="nav-text">IA Optimisation</span>
             </a>
-            
-            <div style="padding: 0 1rem; margin-top: 2rem; margin-bottom: 0.5rem; font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Outils Industriels</div>
-            <a href="/entreprise" class="nav-item">
-                <span class="nav-icon" style="color:#34d399;"><i class="fas fa-file-csv"></i></span>
-                <span class="nav-text" style="color:#34d399; font-weight:600;">Analyse CSV Capteurs</span>
+
+            <div class="nav-section-label">Outils industriels</div>
+            <a href="/entreprise" class="nav-item {{ 'active' if (active_nav|default('')) == 'csv_upload' else '' }}">
+                <span class="nav-icon"><i class="fas fa-file-csv"></i></span>
+                <span class="nav-text">Analyse CSV Capteurs</span>
             </a>
             <a href="/entreprise/map" class="nav-item {{ 'active' if (active_nav|default('')) == 'ent_map' else '' }}">
                 <span class="nav-icon"><i class="fas fa-map-location-dot"></i></span>
@@ -87,9 +107,13 @@
                 <span class="nav-icon"><i class="fas fa-chart-line"></i></span>
                 <span class="nav-text">Projections CO2</span>
             </a>
-            
-            <div style="margin-top: 2rem;">
-                <a href="/entreprise/logout" class="nav-item" style="color: #ef4444;">
+
+            <div style="margin-top: 2rem; border-top: 1px solid var(--sidebar-divider); padding-top: 1rem;">
+                <a href="/" class="nav-item nav-portal">
+                    <span class="nav-icon"><i class="fas fa-leaf"></i></span>
+                    <span class="nav-text">Site public</span>
+                </a>
+                <a href="/entreprise/logout" class="nav-item nav-logout">
                     <span class="nav-icon"><i class="fas fa-sign-out-alt"></i></span>
                     <span class="nav-text">Déconnexion</span>
                 </a>
@@ -114,8 +138,13 @@
             <div class="sidebar-footer-divider" aria-hidden="true"></div>
             <div class="system-info">
                 <div class="status-indicator online" aria-hidden="true"></div>
-                <span>Session Sécurisée</span>
+                <span>Session sécurisée</span>
             </div>
+            {% if app_build|default('') %}
+            <div class="system-info" style="margin-top:0.35rem;font-size:0.7rem;opacity:0.75;">
+                <span>Build {{ app_build }}</span>
+            </div>
+            {% endif %}
         </div>
     </div>
 

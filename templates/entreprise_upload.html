@@ -2,315 +2,30 @@
 
 {% block title %}Analyse CSV Capteurs — AirWatch B2B{% endblock %}
 
-{% block extra_css %}
-<style>
-    /* ============================================
-       PAGE UPLOAD CSV — Espace Industriel
-       ============================================ */
-    .upload-page-wrapper {
-        padding: 2rem;
-        max-width: 760px;
-        margin: 0 auto;
-    }
-
-    /* ---- En-tête de page ---- */
-    .upload-page-header {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        margin-bottom: 2rem;
-        padding-bottom: 1.5rem;
-        border-bottom: 1px solid rgba(59, 130, 246, 0.2);
-    }
-
-    .upload-page-header .page-icon {
-        width: 52px;
-        height: 52px;
-        border-radius: 12px;
-        background: linear-gradient(135deg, #3b82f6, #60a5fa);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.5rem;
-        flex-shrink: 0;
-        box-shadow: 0 4px 15px rgba(59, 130, 246, 0.35);
-    }
-
-    .upload-page-header h1 {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        margin-bottom: 0.25rem;
-    }
-
-    .upload-page-header p {
-        font-size: 0.875rem;
-        color: var(--text-secondary);
-    }
-
-    /* ---- Carte principale ---- */
-    .upload-card {
-        background: var(--card-bg);
-        border: 1px solid var(--border-color);
-        border-radius: 16px;
-        padding: 2rem;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-    }
-
-    /* ---- Alerte erreur ---- */
-    .alert-error {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.75rem;
-        padding: 1rem 1.25rem;
-        background: rgba(239, 68, 68, 0.1);
-        border: 1px solid rgba(239, 68, 68, 0.3);
-        border-radius: 10px;
-        color: #fca5a5;
-        font-size: 0.875rem;
-        margin-bottom: 1.5rem;
-        line-height: 1.5;
-    }
-
-    .alert-error i {
-        color: #ef4444;
-        margin-top: 0.1rem;
-        flex-shrink: 0;
-    }
-
-    /* ---- Info box instructions ---- */
-    .info-instructions {
-        display: flex;
-        align-items: flex-start;
-        gap: 0.75rem;
-        padding: 1rem 1.25rem;
-        background: rgba(59, 130, 246, 0.08);
-        border: 1px solid rgba(59, 130, 246, 0.2);
-        border-left: 4px solid #3b82f6;
-        border-radius: 10px;
-        margin-bottom: 2rem;
-        font-size: 0.85rem;
-        color: var(--text-secondary);
-        line-height: 1.65;
-    }
-
-    .info-instructions i {
-        color: #60a5fa;
-        margin-top: 0.15rem;
-        flex-shrink: 0;
-    }
-
-    .info-instructions strong {
-        color: var(--text-primary);
-    }
-
-    /* ---- Étiquettes de champs ---- */
-    .field-label {
-        display: block;
-        font-size: 0.8rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        color: var(--text-secondary);
-        margin-bottom: 0.6rem;
-    }
-
-    /* ---- Champs texte & select ---- */
-    .field-input,
-    .field-select {
-        width: 100%;
-        padding: 0.75rem 1rem;
-        background: var(--input-bg, rgba(15, 23, 42, 0.6));
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        color: var(--text-primary);
-        font-size: 0.9rem;
-        font-family: inherit;
-        transition: border-color 0.2s, box-shadow 0.2s;
-    }
-
-    .field-input:focus,
-    .field-select:focus {
-        outline: none;
-        border-color: #3b82f6;
-        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
-    }
-
-    .field-select option {
-        background: #1e293b;
-        color: #e2e8f0;
-    }
-
-    /* ---- Zone de dépôt de fichier ---- */
-    .file-drop-zone {
-        border: 2px dashed rgba(59, 130, 246, 0.4);
-        border-radius: 12px;
-        background: rgba(59, 130, 246, 0.04);
-        padding: 2.5rem 1.5rem;
-        text-align: center;
-        transition: border-color 0.25s, background 0.25s;
-        position: relative;
-    }
-
-    .file-drop-zone:hover {
-        border-color: #3b82f6;
-        background: rgba(59, 130, 246, 0.08);
-    }
-
-    .file-drop-zone .drop-icon {
-        font-size: 2.5rem;
-        margin-bottom: 0.75rem;
-        display: block;
-        color: #60a5fa;
-    }
-
-    .file-drop-zone .drop-title {
-        font-size: 1rem;
-        font-weight: 600;
-        color: var(--text-primary);
-        margin-bottom: 0.35rem;
-    }
-
-    .file-drop-zone .drop-subtitle {
-        font-size: 0.8rem;
-        color: var(--text-secondary);
-        margin-bottom: 1.25rem;
-    }
-
-    /* Input file natif — visible, stylisé */
-    .file-drop-zone input[type="file"] {
-        display: block;
-        width: 100%;
-        padding: 0.6rem 1rem;
-        background: var(--input-bg, rgba(15, 23, 42, 0.6));
-        border: 1px solid rgba(59, 130, 246, 0.3);
-        border-radius: 8px;
-        color: var(--text-secondary);
-        font-size: 0.85rem;
-        font-family: inherit;
-        cursor: pointer;
-        max-width: 380px;
-        margin: 0 auto;
-    }
-
-    .file-drop-zone input[type="file"]:focus {
-        outline: 2px solid #3b82f6;
-    }
-
-    .file-hint {
-        margin-top: 0.65rem;
-        font-size: 0.78rem;
-        color: #64748b;
-    }
-
-    /* ---- Grille des champs ---- */
-    .form-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1.25rem;
-        margin-bottom: 1.5rem;
-    }
-
-    @media (max-width: 600px) {
-        .form-grid { grid-template-columns: 1fr; }
-        .upload-page-wrapper { padding: 1rem; }
-    }
-
-    .form-field {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .form-field-full {
-        margin-bottom: 1.5rem;
-    }
-
-    /* ---- Bouton envoi ---- */
-    .btn-analyze {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.6rem;
-        width: 100%;
-        padding: 0.9rem 1.5rem;
-        background: linear-gradient(135deg, #3b82f6, #2563eb);
-        color: #fff;
-        border: none;
-        border-radius: 10px;
-        font-size: 1rem;
-        font-weight: 600;
-        font-family: inherit;
-        cursor: pointer;
-        transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
-        margin-top: 2rem;
-        box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35);
-    }
-
-    .btn-analyze:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(59, 130, 246, 0.45);
-    }
-
-    .btn-analyze:active {
-        transform: translateY(0);
-        opacity: 0.9;
-    }
-
-    /* ---- Badges colonnes CSV ---- */
-    .csv-columns {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-top: 0.75rem;
-    }
-
-    .csv-col-badge {
-        padding: 0.2rem 0.6rem;
-        background: rgba(52, 211, 153, 0.12);
-        border: 1px solid rgba(52, 211, 153, 0.3);
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-family: monospace;
-        color: #34d399;
-        font-weight: 600;
-    }
-
-    /* ---- Séparateur de section ---- */
-    .section-divider {
-        height: 1px;
-        background: var(--border-color);
-        margin: 1.75rem 0;
-        opacity: 0.5;
-    }
-</style>
-{% endblock %}
-
 {% block content %}
 <div class="upload-page-wrapper">
 
-    <!-- En-tête -->
-    <div class="upload-page-header">
-        <div class="page-icon">📊</div>
+    <div class="upload-hero">
+        <div class="upload-hero-icon" aria-hidden="true">
+            <i class="fas fa-file-csv"></i>
+        </div>
         <div>
             <h1>Analyse CSV Capteurs</h1>
-            <p>Importez vos données industrielles pour générer un rapport de qualité d'air</p>
+            <p>Importez vos données industrielles pour générer un rapport de qualité d'air et un plan d'action via IA.</p>
         </div>
     </div>
 
-    <!-- Carte de formulaire -->
     <div class="upload-card">
 
-        <!-- Alerte erreur -->
         {% if error %}
-        <div class="alert-error">
-            <i class="fas fa-exclamation-triangle"></i>
+        <div class="alert-error" role="alert">
+            <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
             <span>{{ error }}</span>
         </div>
         {% endif %}
 
-        <!-- Instructions -->
         <div class="info-instructions">
-            <i class="fas fa-circle-info"></i>
+            <i class="fas fa-circle-info" aria-hidden="true"></i>
             <div>
                 <strong>Instructions :</strong> Importez un fichier CSV contenant les mesures de vos capteurs
                 internes (PM2.5, PM10, CO, NO2, SO2, CO2). Le système analysera automatiquement
@@ -326,14 +41,12 @@
             </div>
         </div>
 
-        <!-- Formulaire -->
         <form method="POST" action="{{ url_for('entreprise_upload') }}" enctype="multipart/form-data">
 
-            <!-- Nom & Type en grille -->
             <div class="form-grid">
                 <div class="form-field">
                     <label class="field-label" for="entity_name">
-                        <i class="fas fa-building" style="margin-right:0.35rem; color:#60a5fa;"></i>
+                        <i class="fas fa-building" aria-hidden="true"></i>
                         Nom de l'entité *
                     </label>
                     <input
@@ -349,44 +62,52 @@
 
                 <div class="form-field">
                     <label class="field-label" for="entity_type">
-                        <i class="fas fa-tags" style="margin-right:0.35rem; color:#60a5fa;"></i>
+                        <i class="fas fa-tags" aria-hidden="true"></i>
                         Type d'entité *
                     </label>
                     <select class="field-select" id="entity_type" name="entity_type" required>
-                        <option value="Usine">🏭 Usine</option>
-                        <option value="Entrepôt">🏗️ Entrepôt</option>
-                        <option value="Ville">🏙️ Ville</option>
-                        <option value="Pays">🌍 Pays</option>
+                        <option value="Usine">Usine</option>
+                        <option value="Entrepôt">Entrepôt</option>
+                        <option value="Ville">Ville</option>
+                        <option value="Pays">Pays</option>
                     </select>
                 </div>
             </div>
 
             <div class="section-divider"></div>
 
-            <!-- Zone fichier CSV -->
             <div class="form-field-full">
-                <label class="field-label">
-                    <i class="fas fa-file-csv" style="margin-right:0.35rem; color:#34d399;"></i>
+                <label class="field-label" for="csv_file">
+                    <i class="fas fa-file-arrow-up" aria-hidden="true"></i>
                     Fichier CSV *
                 </label>
-                <div class="file-drop-zone">
-                    <span class="drop-icon">📁</span>
-                    <div class="drop-title">Sélectionnez votre fichier CSV</div>
+                <div class="file-drop-zone" id="file-drop-zone">
+                    <div class="drop-icon-wrap" aria-hidden="true">
+                        <i class="fas fa-cloud-arrow-up"></i>
+                    </div>
+                    <div class="drop-title">Glissez-déposez ou sélectionnez votre fichier</div>
                     <div class="drop-subtitle">Données capteurs internes — format .csv requis</div>
-                    <input
-                        type="file"
-                        id="csv_file"
-                        name="file"
-                        accept=".csv,text/csv"
-                        required
-                    />
+                    <div class="file-picker-row">
+                        <input
+                            type="file"
+                            id="csv_file"
+                            name="file"
+                            class="file-input-hidden"
+                            accept=".csv,text/csv"
+                            required
+                        />
+                        <label for="csv_file" class="file-picker-btn">
+                            <i class="fas fa-folder-open" aria-hidden="true"></i>
+                            Choisir un fichier
+                        </label>
+                        <span class="file-picker-name" id="file-picker-name">Aucun fichier choisi</span>
+                    </div>
                     <div class="file-hint">Taille max recommandée : 10 Mo · Encodage : UTF-8</div>
                 </div>
             </div>
 
-            <!-- Bouton envoi -->
             <button type="submit" class="btn-analyze" id="btn-analyze-submit">
-                <i class="fas fa-chart-bar"></i>
+                <i class="fas fa-chart-bar" aria-hidden="true"></i>
                 Analyser les données
             </button>
 
@@ -394,4 +115,46 @@
     </div>
 
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    var zone = document.getElementById('file-drop-zone');
+    var input = document.getElementById('csv_file');
+    if (!zone || !input) return;
+
+    ['dragenter', 'dragover'].forEach(function (ev) {
+        zone.addEventListener(ev, function (e) {
+            e.preventDefault();
+            zone.classList.add('is-dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(function (ev) {
+        zone.addEventListener(ev, function (e) {
+            e.preventDefault();
+            zone.classList.remove('is-dragover');
+        });
+    });
+    zone.addEventListener('drop', function (e) {
+        if (e.dataTransfer.files.length) {
+            input.files = e.dataTransfer.files;
+            updateFileLabel();
+        }
+    });
+
+    var nameEl = document.getElementById('file-picker-name');
+    function updateFileLabel() {
+        if (!nameEl) return;
+        if (input.files && input.files.length) {
+            nameEl.textContent = input.files[0].name;
+            nameEl.classList.add('has-file');
+        } else {
+            nameEl.textContent = 'Aucun fichier choisi';
+            nameEl.classList.remove('has-file');
+        }
+    }
+    input.addEventListener('change', updateFileLabel);
+})();
+</script>
 {% endblock %}

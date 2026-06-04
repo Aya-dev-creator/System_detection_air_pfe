@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>{% block title %}AirWatch — Qualité de l'air{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}?v={{ app_build|default('3') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}?v={{ app_build|default('2') }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -106,10 +106,10 @@
                 <span class="nav-text">Assistant IA</span>
             </a>
 
-            <div style="margin-top: 2rem; border-top: 1px solid rgba(148,163,184,0.15); padding-top: 1rem;">
-                <a href="/entreprise/login" class="nav-item" style="background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: var(--radius-md);">
-                    <span class="nav-icon" style="color:#60a5fa;"><i class="fas fa-industry"></i></span>
-                    <span class="nav-text" style="color:#60a5fa; font-weight:600;">Espace Entreprise</span>
+            <div style="margin-top: 2rem; border-top: 1px solid var(--sidebar-divider); padding-top: 1rem;">
+                <a href="/entreprise/login" class="nav-item nav-portal">
+                    <span class="nav-icon"><i class="fas fa-industry"></i></span>
+                    <span class="nav-text">Espace Entreprise</span>
                 </a>
             </div>
         </nav>

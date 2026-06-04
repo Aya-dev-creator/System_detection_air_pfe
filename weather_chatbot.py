@@ -68,7 +68,22 @@ Consignes obligatoires de formatage et de style :
     def reset_conversation(self):
         """Reset the conversation history"""
         self.conversation_history = []
-    
+
+    def _resolve_message_content(self, message):
+        """Normalise le contenu d'une réponse Mistral en chaîne de caractères."""
+        if message is None:
+            return ""
+        content = getattr(message, 'content', '')
+        if isinstance(content, list):
+            resolved = []
+            for chunk in content:
+                chunk_content = getattr(chunk, 'content', None)
+                if chunk_content is None:
+                    chunk_content = str(chunk)
+                resolved.append(str(chunk_content))
+            return ''.join(resolved)
+        return str(content)
+
     def chat(self, user_message, weather_context=None, mode='standard'):
         """
         Send a message to the chatbot and get a response
@@ -117,13 +132,13 @@ Consignes obligatoires de formatage et de style :
             # Call Mistral API
             response = self.client.chat.complete(
                 model=self.model,
-                messages=messages,
+                messages=messages,  # type: ignore[arg-type]
                 temperature=0.7,
                 max_tokens=512
             )
             
             # Extract response text
-            assistant_message = response.choices[0].message.content
+            assistant_message = self._resolve_message_content(response.choices[0].message).strip()
             
             # Add to history
             self.conversation_history.append({
@@ -247,13 +262,33 @@ Please provide:
                     {"role": "user",   "content": user_prompt},
                 ],
                 temperature=0.6,   # Légèrement déterministe pour des recommandations cohérentes
-                max_tokens=1500,   # Suffisant pour 3 sections complètes
+                max_tokens=2000,
             )
-            html_result = response.choices[0].message.content.strip()
+            html_result = self._resolve_message_content(response.choices[0].message).strip()
+            finish_reason = getattr(response.choices[0], 'finish_reason', None)
+
+            # Si la réponse est tronquée par la limite de tokens, on demande une continuation
+            if finish_reason == 'length':
+                logger.warning('Réponse Mistral tronquée, demande de continuation.')
+                continuation = self.client.chat.complete(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": industrial_system_prompt},
+                        {"role": "user", "content": (
+                            "Poursuis la réponse précédente en HTML là où elle s'est arrêtée. "
+                            "Ne répète pas l'introduction, termine directement le contenu restant."
+                            f"\n\nRéponse précédente :\n{html_result}"
+                        )},
+                    ],
+                    temperature=0.6,
+                    max_tokens=1000,
+                )
+                additional = self._resolve_message_content(continuation.choices[0].message).strip()
+                html_result = f"{html_result}\n{additional}"
 
             # Sécurité : supprimer les éventuels blocs Markdown si le modèle les ajoute quand même
             if html_result.startswith("```"):
-                # Retirer la première ligne (```html ou ```) et la dernière (```)
+                # Retirer la première ligne (```html ou ```) et la dernière (```) 
                 lines = html_result.splitlines()
                 if lines[0].startswith("```"):
                     lines = lines[1:]
