@@ -1054,30 +1054,36 @@ def map_view():
 
 @app.route('/map/static.png')
 def map_static_image():
-    """Image carte statique (proxy) — affichage pleine largeur sans bug d'iframe."""
+    """Image carte statique — générée localement avec la bibliothèque staticmap."""
     lat = request.args.get('lat', type=float)
     lon = request.args.get('lon', type=float)
     if lat is None or lon is None:
         return jsonify({'success': False, 'error': 'lat et lon requis'}), 400
 
-    static_url = (
-        'https://staticmap.openstreetmap.de/staticmap.php'
-        f'?center={lat},{lon}&zoom=12&size=1920x960&maptype=mapnik'
-        f'&markers={lat},{lon},red-pushpin'
-    )
     try:
-        upstream = requests.get(
-            static_url,
-            timeout=20,
-            headers={'User-Agent': 'AirWatch/2.2 (PFE air quality)'},
-        )
-        if upstream.status_code == 200 and upstream.content:
-            resp = Response(upstream.content, mimetype=upstream.headers.get('Content-Type', 'image/png'))
-            resp.headers['Cache-Control'] = 'public, max-age=600'
-            return resp
-        logger.warning('Carte statique: HTTP %s depuis staticmap', upstream.status_code)
+        from staticmap import StaticMap, CircleMarker
+        import io
+        
+        # Initialiser la carte avec une taille adaptée
+        m = StaticMap(1280, 560)
+        
+        # Ajouter le marqueur rouge pour la position actuelle (lon, lat)
+        marker = CircleMarker((lon, lat), '#ef4444', 18)
+        m.add_marker(marker)
+        
+        # Rendre la carte
+        image = m.render()
+        
+        # Écrire l'image dans un flux d'octets PNG
+        img_io = io.BytesIO()
+        image.save(img_io, 'PNG')
+        img_io.seek(0)
+        
+        resp = Response(img_io.getvalue(), mimetype='image/png')
+        resp.headers['Cache-Control'] = 'public, max-age=600'
+        return resp
     except Exception as e:
-        logger.warning('Carte statique indisponible: %s', e)
+        logger.error('Erreur lors de la génération de la carte statique locale: %s', e)
 
     # SVG de secours si le service externe échoue
     label = f'{lat:.4f}, {lon:.4f}'
@@ -1330,8 +1336,8 @@ def analytics_view():
                     'air_quality_ppm': 75 + (i % 30),
                     'temperature': 24 + (i % 5),
                     'humidity': 55 + (i % 15),
-                    'latitude': 33.5731,
-                    'longitude': -7.5898
+                    'latitude': config.MAP_CENTER_LAT,
+                    'longitude': config.MAP_CENTER_LON
                 })
 
         # Listes de base
@@ -1522,8 +1528,8 @@ def get_current_data():
                 'temperature': 25.0,
                 'humidity': 60.0,
                 'location': {
-                    'latitude': 33.5731,
-                    'longitude': -7.5898
+                    'latitude': config.MAP_CENTER_LAT,
+                    'longitude': config.MAP_CENTER_LON
                 },
                 'weather': weather
             })
@@ -1627,8 +1633,8 @@ def get_history():
                     'air_quality_ppm': 75 + (i % 30),
                     'temperature': 24 + (i % 5),
                     'humidity': 55 + (i % 15),
-                    'latitude': 33.5731,
-                    'longitude': -7.5898
+                    'latitude': config.MAP_CENTER_LAT,
+                    'longitude': config.MAP_CENTER_LON
                 })
         
         # Formater les données pour les graphiques
@@ -2225,7 +2231,7 @@ def entreprise_map():
         {'id': 2, 'lat': 36.8065, 'lon': 10.1815, 'name': 'Tunis Plant', 'aqi': 42, 'color': '#10b981'},
         {'id': 3, 'lat': 30.0444, 'lon': 31.2357, 'name': 'Cairo Plant', 'aqi': 168, 'color': '#ef4444'},
         {'id': 4, 'lat': 6.5244, 'lon': 3.3792, 'name': 'Lagos Plant', 'aqi': 132, 'color': '#f97316'},
-        {'id': 5, 'lat': 33.5731, 'lon': -7.5898, 'name': 'Casablanca Main', 'aqi': 38, 'color': '#10b981'},
+        {'id': 5, 'lat': config.MAP_CENTER_LAT, 'lon': config.MAP_CENTER_LON, 'name': 'Casablanca Main', 'aqi': 38, 'color': '#10b981'},
     ]
     return render_template('entreprise_map.html', active_nav='ent_map', factories=factories)
 
@@ -2606,7 +2612,7 @@ def entreprise_dashboard():
     
     # Générer une carte (optionnel, si Folium est disponible)
     # Utiliser des coordonnées fictives ou fournies par l'utilisateur
-    lat, lon = 33.5731, -7.5898  # Casablanca par défaut
+    lat, lon = config.MAP_CENTER_LAT, config.MAP_CENTER_LON  # Casablanca par défaut
     map_file = generate_folium_map(
         entity_name=entity_name,
         entity_type=entity_type,

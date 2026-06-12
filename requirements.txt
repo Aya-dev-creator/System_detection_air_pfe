@@ -25,6 +25,7 @@ mistralai==2.4.7
 
 # Module Entreprises & Industries
 folium==0.14.0
+staticmap==0.5.7
 
 # Note: Raspberry Pi GPIO and sensor libraries have been removed
 # This project now uses OpenWeatherMap API instead of physical sensors

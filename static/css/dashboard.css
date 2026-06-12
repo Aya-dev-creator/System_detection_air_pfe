@@ -263,6 +263,12 @@ html[data-theme="dark"] *::-webkit-scrollbar-button:single-button:horizontal:inc
     box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
 }
 
+img.logo-icon {
+    background: none;
+    padding: 0;
+    object-fit: cover;
+}
+
 .logo-title {
     font-size: 1.375rem;
     font-weight: 700;
@@ -1311,6 +1317,12 @@ body[data-theme="light"] .theme-toggle:hover {
     justify-content: center;
     font-size: 1.5rem;
     box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+}
+
+img.login-brand-icon {
+    background: none;
+    padding: 0;
+    object-fit: cover;
 }
 
 .login-card h1 {

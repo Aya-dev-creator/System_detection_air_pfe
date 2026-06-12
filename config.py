@@ -131,8 +131,8 @@ class Config:
     WEATHER_DEFAULT_QUERY = os.getenv('WEATHER_DEFAULT_QUERY', 'Casablanca,MA')
     # Coordonnées GPS du centre de la carte (latitude, longitude)
     # Par défaut: Casablanca, Maroc (33.5731°N, 7.5898°W)
-    MAP_CENTER_LAT = float(os.getenv('MAP_CENTER_LAT', '33.5731'))
-    MAP_CENTER_LON = float(os.getenv('MAP_CENTER_LON', '-7.5898'))
+    MAP_CENTER_LAT = float(os.getenv('MAP_CENTER_LAT', '33.565318'))
+    MAP_CENTER_LON = float(os.getenv('MAP_CENTER_LON', '-7.663939'))
     
     # Si 'true', la carte suit les coordonnées des dernières mesures enregistrées
     MAP_FOLLOW_GPS = os.getenv('MAP_FOLLOW_GPS', 'false').lower() in ('1', 'true', 'yes')
