@@ -47,10 +47,7 @@ All dependencies installed successfully:
 
 ### 🔑 API Key Status
 
-Your Mistral API key is already configured in `.env`:
-```
-MISTRAL_API_KEY=7qPAU5l7ASSru0Is7ShSTajtJYmUWJpj
-```
+Your Mistral API key is already configured in `.env`:`
 
 ### 🧪 What Was Tested
 
